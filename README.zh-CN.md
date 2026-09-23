@@ -43,7 +43,13 @@ python train_lakun.py
 
 ## 推理
 
-拿到完整检查点后，可直接运行仓库里的纯文本示例：
+在项目根目录安装本地代码（不需要先发布 PyPI）：
+
+```bash
+python -m pip install -e .
+```
+
+确认完整检查点已放在 `runs/lakun_full/best/` 后，可直接运行仓库里的纯文本示例：
 
 ```bash
 python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
@@ -74,19 +80,11 @@ print(result["answers"])
 
 ## 发布与许可
 
-[GitHub 源码仓库](https://github.com/AI-Discussion-Room/LaKun)、将来的 PyPI 安装包和模型权重仓库是三个独立的发布物。GitHub 仓库公开后，可用 `python -m pip install "git+https://github.com/AI-Discussion-Room/LaKun.git"` 安装代码；只有另行发布到 PyPI 后，`pip install lakun` 才会生效。安装包不包含权重和训练数据。
+[GitHub 源码仓库](https://github.com/AI-Discussion-Room/LaKun)、将来的 PyPI 安装包和魔塔权重仓库是三个独立发布物。**目前 GitHub 仓库仍是 Private，PyPI 包和魔塔权重都尚未发布。**上面的可运行示例使用本地安装的代码和本地检查点；在正式发布并验证前，不要使用 `pip install lakun` 或假设某个魔塔仓库 ID 已存在。源码安装包不包含权重或训练数据。
 
-在魔塔创建模型仓库时，把 `runs/lakun_full/best/` **里面的内容**上传到仓库根目录，不要额外套一层 `best/` 或 `runs/`。根目录须有 `model_config.json`、`lakun.safetensors`、`text_encoder/`、`vision_encoder/`、`tokenizer/`、`image_processor/`。`lakun.safetensors` 文件名不要改，当前加载器会查找这个名字；公开仓库可命名为 `LaKun-0.76B-v1`。
+以后在魔塔创建模型仓库时，把 `runs/lakun_full/best/` **里面的内容**上传到仓库根目录，不要额外套一层 `best/` 或 `runs/`。根目录须有 `model_config.json`、`lakun.safetensors`、`text_encoder/`、`vision_encoder/`、`tokenizer/`、`image_processor/`。`lakun.safetensors` 文件名不要改，当前加载器会查找这个名字。
 
-魔塔下载需另外安装 `modelscope-hub`。当前 LaKun 加载器接受本地目录或 Hugging Face 仓库 ID，**不能**直接输入魔塔仓库 ID：
-
-```python
-from modelscope_hub import HubApi
-from lakun import LaKunPredictor
-
-checkpoint = HubApi().download_repo("你的魔塔账号/LaKun-0.76B-v1", "model")
-model = LaKunPredictor.from_pretrained(checkpoint)
-```
+魔塔模型正式发布并验证后，可以安装 `modelscope-hub` 将它下载到本地，再把下载目录传给 `LaKunPredictor.from_pretrained()`。当前加载器**不能**直接输入魔塔仓库 ID。届时再把真实仓库 ID 和经验证的命令补进说明，避免展示尚未生效的占位符。
 
 LaKun 源码采用 Apache-2.0，见根目录 `LICENSE`；复制的 Laya 组件保留其自己的 `lakun/vendor/laya/LICENSE`。以后公开权重时，还需在模型卡单独写明权重许可，并核对原始模型和数据条款。**不要**把整个项目、原始底座、数据集、图片、API Key 或外层 `runs/` 目录上传到模型仓库。这个自定义架构由 `lakun` 加载，暂不能直接用 Transformers 的 `AutoModel.from_pretrained()` 读取。
 

@@ -43,7 +43,13 @@ Full training defaults to at most three epochs, validation every 3,000 optimizer
 
 ## Inference
 
-To run the included text-only example after obtaining a complete checkpoint:
+From this project directory, install the local code (no PyPI release is required):
+
+```bash
+python -m pip install -e .
+```
+
+With a complete checkpoint already present at `runs/lakun_full/best/`, run the included text-only example:
 
 ```bash
 python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
@@ -74,19 +80,11 @@ For text-only decisions, omit `image` and pass a `state` string. A group current
 
 ## Release and licensing
 
-The [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun), the future PyPI package, and the model-weight repository are separate releases. After this GitHub repository is public, the source package can be installed with `python -m pip install "git+https://github.com/AI-Discussion-Room/LaKun.git"`. A literal `pip install lakun` is available only after a PyPI release; the wheel does not contain model weights or training data.
+The [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun), a future PyPI package, and a future ModelScope weight repository are separate releases. **As of this release, the GitHub repository is private; neither the PyPI package nor the ModelScope weights have been published.** The working examples above use a local code installation and a local checkpoint. Do not use `pip install lakun` or a ModelScope repo ID until those releases are verified. The source package never contains model weights or training data.
 
-Publish the **contents** of `runs/lakun_full/best/` to the root of a ModelScope model repository, not the enclosing `best/` or `runs/` directory. Its root must include `model_config.json`, `lakun.safetensors`, `text_encoder/`, `vision_encoder/`, `tokenizer/`, and `image_processor/`. Keep the filename `lakun.safetensors`: the current loader expects it. The repository name can be `LaKun-0.76B-v1` or another public name.
+When publishing, upload the **contents** of `runs/lakun_full/best/` to the root of a ModelScope model repository, not the enclosing `best/` or `runs/` directory. Its root must include `model_config.json`, `lakun.safetensors`, `text_encoder/`, `vision_encoder/`, `tokenizer/`, and `image_processor/`. Keep the filename `lakun.safetensors`: the current loader expects it.
 
-ModelScope downloads require the optional `modelscope-hub` client. The current LaKun loader accepts a local directory or a Hugging Face repo ID, **not** a ModelScope repo ID directly:
-
-```python
-from modelscope_hub import HubApi
-from lakun import LaKunPredictor
-
-checkpoint = HubApi().download_repo("YOUR_MODELSCOPE_OWNER/LaKun-0.76B-v1", "model")
-model = LaKunPredictor.from_pretrained(checkpoint)
-```
+After a verified ModelScope release, install the optional `modelscope-hub` client, download that model to a local directory, then pass the directory to `LaKunPredictor.from_pretrained()`. The current loader does **not** accept a ModelScope repo ID directly. A concrete command with the actual repo ID will be added after publication.
 
 The LaKun source code is Apache-2.0 licensed (see `LICENSE`); the copied Laya component keeps its own Apache-2.0 notice in `lakun/vendor/laya/LICENSE`. A future weight release needs its own model-card license and a review of upstream model/data terms. Do **not** upload the project root, original base weights, dataset, images, API keys, or an enclosing `runs/` directory to the model repository. This custom architecture is loaded through `lakun`, not directly through Transformers `AutoModel.from_pretrained()`.
 

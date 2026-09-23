@@ -1,0 +1,10 @@
+include LICENSE
+include README.md README.zh-CN.md START.md
+include train_lakun.py predict_lakun.py requirements-train.txt
+recursive-include examples *.json
+recursive-include lakun *.py LICENSE
+prune dataset
+prune images
+prune runs
+prune weights
+prune offline_wheels

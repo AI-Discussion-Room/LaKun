@@ -1,0 +1,8 @@
+# Server image already provides PyTorch; install LaKun and its other packages.
+-e .
+transformers==4.57.3
+accelerate>=0.26,<2
+safetensors>=0.4
+huggingface-hub>=0.34,<1
+Pillow>=10
+numpy>=1.24

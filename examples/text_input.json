@@ -1,0 +1,20 @@
+{
+  "state": "The service was friendly and fast.",
+  "questions": [
+    {
+      "type": "choice",
+      "question": "What best describes the service?",
+      "criteria": ["good", "bad", "unclear"]
+    },
+    {
+      "type": "score",
+      "question": "Rate the service.",
+      "criteria": ["poor", "average", "excellent"]
+    },
+    {
+      "type": "noul",
+      "question": "Was the service friendly?",
+      "criteria": ["false", "true"]
+    }
+  ]
+}

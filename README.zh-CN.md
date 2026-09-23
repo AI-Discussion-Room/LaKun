@@ -1,91 +1,113 @@
-# LaKun
+# LaKun：让文字或单张图片回答类型化问题
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+[English](README.md) · 简体中文 · [数据集完整统计](analysis/DATASET_PROFILE.md)
 
-LaKun 是一个给候选选项打分的多模态模型，支持三种决策任务：**Choice**（选择）、**Score**（分档评分）和 **Noul**（`false`/`true` 判别）。输入可以是一段文本状态，也可以是一张图片加若干问题；输出是每道题各候选项的概率。它**不是**自由生成文本的聊天模型。
+我做 LaKun，是想让模型面对一段状态或一张图片时，直接回答我预先定义的问题：从候选项中选择、按档位评分，或者回答 `false/true`。它输出每个候选项的 softmax 分数和最高分选项，不生成自由文本，也不是聊天模型。一次 `predict()` 可以同时提交这三类问题；目前一个请求最多 20 题、最多一张图片。
 
-模型联合微调 [mmBERT-base](https://huggingface.co/jhu-clsp/mmBERT-base) 文本编码器和 [SigLIP SO400M](https://huggingface.co/google/siglip-so400m-patch14-384) 视觉编码器，通过视觉 token 桥接到受 Laya 启发的类型化决策头。项目不加载 Laya 微调权重；相关派生源码和许可证保留在 `lakun/vendor/laya/`。
+> **发布状态：**源码位于私有 GitHub 仓库，完整权重已上传到私有魔塔仓库 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)。PyPI 尚未发布；目前只有获得仓库访问权限的人能按下文下载。代码采用 Apache-2.0；**权重的公开许可尚未确定**，我不会把源码许可自动等同于权重许可。
 
-> **当前状态：**首轮正式训练已结束，选用优化步 16,882 的检查点。留出测试集对**教师伪标签**的一致率分别为：选择题 83.11%、评分题 83.37%、判别题 80.92%；这不是人工真值准确率，也不能代表通用任务表现。一次探索性的外部垃圾评论分类测试显示跨领域迁移较弱，部署前请用自己的任务独立评测。
+## 一眼看懂
 
-## 数据集概况
-
-当前本地数据集共有 **126,663 组、380,424 道问题**：图像 59,996 组 / 180,424 题，文本 66,667 组 / 200,000 题。训练、验证、测试约按 8:1:1 **以组为单位**划分；同组的问题不会拆开。选择、评分和判别三类任务的题量接近。图像涵盖 7 个来源子集，合成文本覆盖 50 个方向。
-
-答案属于模型生成的**伪标签**，不是人工核验的真值。[数据集统计与图表](analysis/DATASET_PROFILE.md)列出了具体频数、来源和已发现的答案位置偏斜。未做独立核验前，训练或评测成绩只能理解为与这些标签的一致程度。默认 Git 仓库不包含图片和数据文件；发布数据前还需核对原始数据集的许可条款。
-
-## 项目结构
-
-| 路径 | 用途 |
+| 项目 | 当前实现与实测 |
 |---|---|
-| `train_lakun.py` | 直接启动单卡或本机多卡训练 |
-| `predict_lakun.py` | 用输入 JSON 推理，或查看一组留出集样本 |
-| `lakun/` | 模型、数据读取、训练与推理代码 |
-| `analysis/` | 仅包含数据集统计与图表 |
-| `dataset/`、`images/` | 本地图文数据及引用的图片 |
-| `weights/` | 启动训练所需的原始 mmBERT、SigLIP 权重 |
-| `runs/lakun_full/best/` | 训练完成后的最佳完整推理检查点 |
+| 输入 | 文本状态，或单张图片；每次 1–20 个类型化问题 |
+| 问题 | `choice` 2–20 个候选项；`score` 3–20 档；`noul` 固定 `false/true` |
+| 输出 | 每题的 `criteria`、`probabilities`、`predicted_index`；**概率尚未做校准验证** |
+| 模型 | mmBERT-base + SigLIP SO400M + 视觉 token 桥接 + 决策头 |
+| 参数量 | **756,409,158（约 0.756B）**，从本检查点 627 个张量逐项统计；`0.7B` 是仓库名中的近似称呼 |
+| 权重体积 | `lakun.safetensors` **3,025,715,432 字节（2.82 GiB）**；完整推理目录约 **2.85 GiB** |
+| 上下文 | 最多 512 token（图像预留 64 个视觉 token）；超限报错，不会静默截断 |
 
-## 安装与训练
+我联合微调了文本和视觉编码器，没有使用 Laya 已训练好的权重。决策头借鉴并保留了 Laya 衍生代码及许可证；因此 LaKun 的指标不能当作 Laya 的指标。
 
-需要 Python 3.10+ 和支持 CUDA 的 PyTorch。若服务器镜像已经装好 PyTorch，在项目根目录运行：
+## 先跑起来
+
+目前请从**本仓库源码**安装，不要执行 `pip install lakun`（尚未发布到 PyPI）。先安装与本机驱动匹配的 PyTorch，再在项目目录运行：
 
 ```bash
-python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.device_count()); assert torch.cuda.is_available()"
+python -m pip install -e .
+python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
+```
+
+`runs/lakun_full/best/` 是我本地的完整检查点目录，不在 GitHub 里。若你有私有魔塔仓库权限，也可以先下载到本地，再将下载目录传给 `--checkpoint`；当前加载器**不接受仓库 ID 代替本地路径**。
+
+下面是真实 API 的三题同问示例；`state` 在这里输入，图片任务则通过 `image=` 传一张本地图片：
+
+```python
+from lakun import LaKunPredictor
+
+model = LaKunPredictor.from_pretrained("runs/lakun_full/best")
+result = model.predict(
+    [
+        {"type": "choice", "question": "这是什么类型的请求？", "criteria": ["咨询", "投诉", "退款"]},
+        {"type": "score", "question": "这件事有多紧急？", "criteria": ["不紧急", "一般", "紧急"]},
+        {"type": "noul", "question": "用户是否要求退款？", "criteria": ["false", "true"]},
+    ],
+    state="用户说：我被重复扣费了，请尽快退款。",
+)
+for answer in result["answers"]:
+    print(answer["type"], answer["predicted_index"], answer["probabilities"])
+```
+
+`predicted_index` 从 0 开始，对应你传入的 `criteria` 顺序。`score` 目前返回**最高分档位的索引**，不是连续回归分数。这里的 `probabilities` 是候选项 softmax 值；我还没有做可靠的概率校准测试，不能把 `0.9` 理解为“现实中有 90% 的正确率”。
+
+## 我测到的效果
+
+我按组划分训练、验证和测试集；选模型时只看验证损失，最终保留优化步 **16,882** 的检查点。在 **12,703 组 / 38,141 题**的留出测试集上，它与教师伪标签的一致率为：
+
+| 类型 | 一致率 |
+|---|---:|
+| Choice | 83.11% |
+| Score | 83.37% |
+| Noul | 80.92% |
+
+这些标签由 `qwen3.8-flash` 生成，**不是人工真值**；这里的数字不是通用准确率，也不能证明数值推理或图片理解的真实能力。最佳验证损失为 `0.014464`；第二轮训练损失继续下降时，验证损失反而上升，所以我保留第一轮末的权重并早停。损失和上面三个一致率是不同指标，不能互相替代。
+
+### 本地推理速度
+
+我用本项目完整检查点在 **Windows 11、NVIDIA GeForce RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32 推理** 下测量。每种场景先预热 5 次，再串行执行 30 次；每次计时前后同步 CUDA。计时覆盖 `predict()` 的分词、图片读取与预处理、前向传播和结果整理；**不含**模型加载、下载或网络传输。图片来自本地测试集中的一张样本，测速不是准确率评估。
+
+| 场景 | 每次问题数 | 中位延迟 | p95 延迟 |
+|---|---:|---:|---:|
+| 纯文本 | 1 | 17.01 ms | 19.23 ms |
+| 纯文本 | 3 | 18.18 ms | 18.65 ms |
+| 单张图片 | 1 | 162.01 ms | 168.69 ms |
+| 单张图片 | 3 | 168.71 ms | 171.59 ms |
+
+我把[可复测脚本](analysis/benchmark_inference.py)和[本次测量记录](analysis/benchmark_rtx3060_2026-09-24.json)都放在 `analysis/`。复测命令：`python -m analysis.benchmark_inference --checkpoint runs/lakun_full/best --image /path/to/one-image.jpg`。这组结果仅代表上述机器和输入，不等于 AutoDL 的 4090 速度，也不是多请求并发吞吐。
+
+## 我构建的数据集
+
+我将图像和文本统一成“**一组状态 + 多道类型化问题**”的格式，问题标签全部来自 `qwen3.8-flash`。当前统计有 **126,663 组 / 380,424 题**：图像 59,996 组 / 180,424 题，文本 66,667 组 / 200,000 题。三类题数量接近，按组约 8:1:1 划分，保证同组问题不会跨训练、验证、测试集。
+
+![数据规模、三类任务和划分](analysis/figures/01-overview.png)
+
+我在分析里还统计了候选项数量、评分档位、二元标签、7 个图像来源和 50 个文本方向。最值得警惕的是四选一的答案位置偏斜：图像题的 B 项占 **53.15%**、D 项仅 **1.74%**；文本题 B 项占 **46.48%**、D 项仅 **2.98%**。模型可能利用位置规律，而不是真正理解内容。
+
+![候选项和伪标签分布](analysis/figures/02-options-and-labels.png)
+
+[查看其余两张图：来源/覆盖](analysis/figures/03-coverage.png) · [50 个文本方向及位置分布](analysis/figures/04-domains-and-choice-labels.png) · [完整频数与统计方法](analysis/DATASET_PROFILE.md)
+
+我没有把训练 JSONL、图片或测试样本上传到 GitHub / 魔塔。图表是汇总统计，不包含那 1,000 组测试明细；原始图像来源和数据许可还需要逐项核对。
+
+## 训练与复现
+
+训练入口是 `train_lakun.py`。需要 Python 3.10+、可用的 CUDA PyTorch、`requirements-train.txt`、原始底座权重 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/`，以及六份 `dataset/{image,text}_{train,val,test}.jsonl` 和图片。先做小样本流程检查，再开始全量训练：
+
+```bash
 python -m pip install -r requirements-train.txt
 python train_lakun.py --train-groups 12 --val-groups 6 --test-groups 6 --epochs 1 --out runs/lakun_pilot
 python train_lakun.py
 ```
 
-把原始模型放在 `weights/mmbert-base/` 和 `weights/siglip-so400m-patch14-384/`；保留六份 `dataset/{image,text}_{train,val,test}.jsonl` 及其引用图片的相对目录结构。`train_lakun.py` 默认使用本机全部可见 GPU，多卡时自动启动 PyTorch DDP。可用 `--gpus N` 指定卡数，或用 `CUDA_VISIBLE_DEVICES` 选择设备；不同服务器上的卡不能直接当作同一台机器的本地多卡。
+训练默认使用本机可见 GPU（多卡为 DDP），每 3,000 优化步验证，最多 3 轮，连续 3 次验证损失未达到改进阈值则早停。检查点包含两座编码器和自定义决策模块；推理时要保留整个 `best/` 目录，不能只拿 `.safetensors`。当前检查点没有优化器状态，不能无损接着上次中断的优化步训练。详见 [`START.md`](START.md)。
 
-全量训练默认最多 3 轮，每 3,000 个优化步做一次验证；验证损失连续 3 次没有达到改进阈值就早停。测试集只在选好模型后用于最终评估。默认输出目录为 `runs/lakun_full/`，其中 `runs/lakun_full/best/` 是**完整**的最佳推理检查点。推理时下载整个 `best/` 目录，不要只取 `.safetensors`。其中已经包含两座编码器和决策模块，推理不再单独读取原始底座权重。目前检查点不含优化器状态，训练中断后不能从原步数无损续训。
+## 发布边界
 
-## 推理
+我只把代码放在 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，把权重放在 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)；两处目前均为**私有**。GitHub 仓库不打包权重、图片和原始数据。魔塔仓库不包含可直接 `pip install` 的已发布软件包，运行时仍需先安装本项目代码。这个自定义架构也不能直接通过 Transformers `AutoModel.from_pretrained()` 加载。源码采用 [Apache-2.0](LICENSE)；权重公开前，我还需要完成上游模型/数据条款和权重许可检查。
 
-在项目根目录安装本地代码（不需要先发布 PyPI）：
+## 我目前看到的局限
 
-```bash
-python -m pip install -e .
-```
+我把局限放在最后，也会在魔塔模型卡保留同样说明。LaKun 在**与训练数据接近的分布**上，对这三种类型化题目已有可用表现；我尤其觉得有明确数值线索、需要在候选项之间做简单推理的题目更容易答好，**但这只是目前试用观察，尚无独立分项测评支持**。另一方面，外部垃圾评论分类试验暴露出明显的跨领域迁移问题；第二轮训练损失下降而验证损失变差，也让我警惕过度专用化，甚至某种“微调坍塌”现象。现在还不能证明是底座能力真正坍塌，需要与未微调底座、不同检查点及人工标注域外集做对照。
 
-确认完整检查点已放在 `runs/lakun_full/best/` 后，可直接运行仓库里的纯文本示例：
-
-```bash
-python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
-```
-
-修改 JSON 可输入自己的文本和问题；图片任务在 JSON 中增加 `image` 路径，相对路径按 JSON 文件所在目录解析。GitHub 代码仓库不包含检查点。
-
-本地已有测试集时，可查看留出集样本：
-
-```bash
-python predict_lakun.py --checkpoint /path/to/your/checkpoint --modality image --group-index 0
-```
-
-也可以直接调用库，传自己的图片和问题（先替换图片路径）：
-
-```python
-from lakun import LaKunPredictor
-
-model = LaKunPredictor.from_pretrained("/path/to/your/checkpoint")
-result = model.predict(
-    [{"type": "choice", "question": "图中是什么？", "criteria": ["猫", "狗", "汽车"]}],
-    image="/path/to/your/image.jpg",
-)
-print(result["answers"])
-```
-
-纯文本任务不传 `image`，改为提供 `state` 字符串。当前一组只支持**一张图片**、1–20 个问题；尚不支持多图输入。`noul` 判别题的候选项固定为 `criteria=["false", "true"]`。
-
-## 发布与许可
-
-[GitHub 源码仓库](https://github.com/AI-Discussion-Room/LaKun)、将来的 PyPI 安装包和魔塔权重仓库是三个独立发布物。**目前 GitHub 仓库仍是 Private，PyPI 包和魔塔权重都尚未发布。**上面的可运行示例使用本地安装的代码和本地检查点；在正式发布并验证前，不要使用 `pip install lakun` 或假设某个魔塔仓库 ID 已存在。源码安装包不包含权重或训练数据。
-
-以后在魔塔创建模型仓库时，把 `runs/lakun_full/best/` **里面的内容**上传到仓库根目录，不要额外套一层 `best/` 或 `runs/`。根目录须有 `model_config.json`、`lakun.safetensors`、`text_encoder/`、`vision_encoder/`、`tokenizer/`、`image_processor/`。`lakun.safetensors` 文件名不要改，当前加载器会查找这个名字。
-
-魔塔模型正式发布并验证后，可以安装 `modelscope-hub` 将它下载到本地，再把下载目录传给 `LaKunPredictor.from_pretrained()`。当前加载器**不能**直接输入魔塔仓库 ID。届时再把真实仓库 ID 和经验证的命令补进说明，避免展示尚未生效的占位符。
-
-LaKun 源码采用 Apache-2.0，见根目录 `LICENSE`；复制的 Laya 组件保留其自己的 `lakun/vendor/laya/LICENSE`。以后公开权重时，还需在模型卡单独写明权重许可，并核对原始模型和数据条款。**不要**把整个项目、原始底座、数据集、图片、API Key 或外层 `runs/` 目录上传到模型仓库。这个自定义架构由 `lakun` 加载，暂不能直接用 Transformers 的 `AutoModel.from_pretrained()` 读取。
-
-更详细的中文启动说明见 [START.md](START.md)。
+因此我不会宣称它已经是通用分类器、强泛化视觉模型或可靠的数值推理模型。它目前只支持单张图片；答案位置偏斜、伪标签误差、未经校准的概率、跨域表现和来源许可，都是公开前要继续解决的问题。

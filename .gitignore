@@ -15,4 +15,5 @@ offline_wheels/
 torch26-cu124-offline.zip
 requirements.txt
 *.log
+.ms_upload_cache
 .env

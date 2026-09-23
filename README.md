@@ -1,91 +1,113 @@
-# LaKun
+# LaKun: typed decisions from text or one image
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+English · [简体中文](README.zh-CN.md) · [Dataset profile and charts](analysis/DATASET_PROFILE.md)
 
-LaKun is a multimodal, option-scoring model for three decision types: **Choice** (select an option), **Score** (select an ordered rating bin), and **Noul** (a `false`/`true` decision). It accepts a text state or one image with one or more questions and returns a probability for each supplied option. It is **not** a free-form text generator.
+I built LaKun to answer questions I define in advance about a text state or a single image: choose among options, select an ordered rating bin, or decide `false/true`. It returns softmax scores and the highest-scoring option for each question. It does not generate free-form text and is not a chat model. One `predict()` call can contain all three question types, with up to 20 questions and one image.
 
-The implementation jointly fine-tunes an [mmBERT-base](https://huggingface.co/jhu-clsp/mmBERT-base) text encoder and a [SigLIP SO400M](https://huggingface.co/google/siglip-so400m-patch14-384) vision encoder. A visual-token bridge connects the vision output to a typed decision head inspired by Laya. No Laya fine-tuned checkpoint is loaded; the relevant Laya-derived source and its license are bundled in `lakun/vendor/laya/`.
+> **Release status:** My [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun) and [ModelScope weight repository](https://modelscope.cn/models/hh108801/LaKun-0.7B) are both **private**. I have not published a PyPI package. The code is Apache-2.0; the weight license is **not yet decided** and must not be inferred from the code license.
 
-> **Status:** Initial training is complete. The selected checkpoint is from optimizer step 16,882. Held-out test accuracy against **teacher pseudo-labels** was 83.11% (`choice`), 83.37% (`score`), and 80.92% (`noul`); these are not human-verified or general-purpose accuracy claims. An exploratory external spam-classification test showed poor cross-domain transfer, so evaluate LaKun on your own task before deployment.
+## At a glance
 
-## Dataset at a glance
-
-The current local dataset has **126,663 groups** and **380,424 questions**: 59,996 image groups / 180,424 questions and 66,667 text groups / 200,000 questions. Each group is kept intact across the approximately 8:1:1 train/validation/test split. The three task types are close to equally represented. Image groups draw from seven source subsets; synthetic text groups cover 50 topics.
-
-The answers are model-generated **pseudo-labels**, not human-verified ground truth. The [dataset profile and charts (Chinese)](analysis/DATASET_PROFILE.md) contain the counts, source breakdown, and known answer-position imbalance. Training/evaluation scores should be interpreted as agreement with these labels until independently checked. Dataset files and images are not included in the Git repository by default; review upstream dataset terms before distributing them.
-
-## Layout
-
-| Path | Purpose |
+| Item | Current implementation / measurement |
 |---|---|
-| `train_lakun.py` | One-command single-GPU or local multi-GPU training |
-| `predict_lakun.py` | Score an input JSON or inspect one held-out dataset group |
-| `lakun/` | Model, data loading, training, and inference code |
-| `analysis/` | Dataset-only statistics and charts |
-| `dataset/`, `images/` | Local train/validation/test data and referenced images |
-| `weights/` | Original mmBERT and SigLIP weights used to start training |
-| `runs/lakun_full/best/` | Best complete LaKun inference checkpoint after training |
+| Input | A text state or one image, with 1–20 typed questions |
+| Questions | `choice`: 2–20 options; `score`: 3–20 bins; `noul`: `false/true` |
+| Output | Per-question `criteria`, `probabilities`, and `predicted_index`; probability calibration is **not validated** |
+| Architecture | mmBERT-base + SigLIP SO400M + visual-token bridge + typed decision head |
+| Parameter count | **756,409,158 (~0.756B)** across 627 checkpoint tensors; `0.7B` is an approximate repository name |
+| Weight size | `lakun.safetensors`: **3,025,715,432 bytes (2.82 GiB)**; complete inference directory: about **2.85 GiB** |
+| Context | At most 512 tokens, reserving 64 visual tokens for images; overlength inputs raise an error |
 
-## Install and train
+I jointly fine-tuned the text and vision encoders. I did **not** load a Laya fine-tuned checkpoint; the decision head uses Laya-derived code with its notice preserved. LaKun's results are not Laya's results.
 
-Use Python 3.10+ with a CUDA-enabled PyTorch installation. On a server image where PyTorch is already available:
+## Quick start
+
+Install from this source checkout, **not** with `pip install lakun` (there is no PyPI release yet). Install a PyTorch build appropriate for your machine first:
 
 ```bash
-python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.device_count()); assert torch.cuda.is_available()"
+python -m pip install -e .
+python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
+```
+
+`runs/lakun_full/best/` is my local complete checkpoint, not part of the Git repository. If you have access to the private ModelScope repository, download it first and pass the resulting local directory to `--checkpoint`; the loader does **not** accept a repository ID directly.
+
+Here is the real API with all three question types in one request. Supply `state=` for text, or `image="/path/to/image.jpg"` for one local image:
+
+```python
+from lakun import LaKunPredictor
+
+model = LaKunPredictor.from_pretrained("runs/lakun_full/best")
+result = model.predict(
+    [
+        {"type": "choice", "question": "What kind of request is this?", "criteria": ["question", "complaint", "refund"]},
+        {"type": "score", "question": "How urgent is it?", "criteria": ["low", "medium", "high"]},
+        {"type": "noul", "question": "Does the user request a refund?", "criteria": ["false", "true"]},
+    ],
+    state="The customer says they were charged twice and asks for a prompt refund.",
+)
+for answer in result["answers"]:
+    print(answer["type"], answer["predicted_index"], answer["probabilities"])
+```
+
+`predicted_index` is zero-based and refers to the supplied option order. For `score`, it is the winning **bin index**, not a continuous regression output. The probabilities are softmax values, not calibrated real-world correctness probabilities.
+
+## What I measured
+
+I split groups—not individual questions—between training, validation and test. I selected the checkpoint at optimizer step **16,882** using validation loss. On **12,703 held-out groups / 38,141 questions**, agreement with the teacher's pseudo-labels was:
+
+| Type | Agreement |
+|---|---:|
+| Choice | 83.11% |
+| Score | 83.37% |
+| Noul | 80.92% |
+
+The labels were generated by `qwen3.8-flash`, not verified by people. These are **not** general-purpose accuracy, reasoning, or probability-calibration scores. Best validation loss was `0.014464`. During the second epoch, training loss kept falling while validation loss rose, so I retained the earlier checkpoint and stopped training.
+
+### Local inference speed
+
+I measured the complete `LaKunPredictor.predict()` call on **Windows 11**, an **NVIDIA GeForce RTX 3060 12GB**, **PyTorch 2.7.1+cu126**, using FP32 inference. For each scenario I ran 5 warm-ups and 30 sequential timed calls, synchronizing CUDA before and after timing. The measurement includes tokenization, image decoding/preprocessing where applicable, forward pass, and result construction. It **excludes** checkpoint loading, download, and network overhead. The image is one local held-out sample; this is a speed test, not an accuracy test.
+
+| Scenario | Questions/call | Median | p95 |
+|---|---:|---:|---:|
+| Text | 1 | 17.01 ms | 19.23 ms |
+| Text | 3 | 18.18 ms | 18.65 ms |
+| One image | 1 | 162.01 ms | 168.69 ms |
+| One image | 3 | 168.71 ms | 171.59 ms |
+
+I include both the [benchmark script](analysis/benchmark_inference.py) and the [measurement record](analysis/benchmark_rtx3060_2026-09-24.json). To rerun: `python -m analysis.benchmark_inference --checkpoint runs/lakun_full/best --image /path/to/one-image.jpg`. These results should not be presented as RTX 4090 throughput or concurrent serving latency.
+
+## My dataset
+
+I unified images and text into **one state + multiple typed questions** per group. All question labels were generated by `qwen3.8-flash`. The current profile contains **126,663 groups / 380,424 questions**: 59,996 image groups / 180,424 questions and 66,667 text groups / 200,000 questions. Choice, score and noul occur at similar frequencies. The approximately 8:1:1 split keeps every group's questions together.
+
+![Dataset size, question types and splits](analysis/figures/01-overview.png)
+
+The profile also covers option counts, rating bins, seven image source subsets and 50 synthetic text topics. One important bias: among four-option questions, option B is the teacher's answer in **53.15%** of image questions and **46.48%** of text questions; D is only **1.74%** and **2.98%**, respectively. The model may exploit answer position rather than content.
+
+![Option and pseudo-label distributions](analysis/figures/02-options-and-labels.png)
+
+[Source and coverage chart](analysis/figures/03-coverage.png) · [All 50 text topics and answer positions](analysis/figures/04-domains-and-choice-labels.png) · [Full dataset profile](analysis/DATASET_PROFILE.md). The chart labels are currently Chinese.
+
+I have not uploaded the raw JSONL, images, or the 1,000 inspected test examples to GitHub or ModelScope. These charts contain aggregates only. Upstream image/data terms need further review before any dataset release.
+
+## Training and reproducibility
+
+`train_lakun.py` needs Python 3.10+, a CUDA-enabled PyTorch build, `requirements-train.txt`, the original base weights under `weights/mmbert-base/` and `weights/siglip-so400m-patch14-384/`, plus six `dataset/{image,text}_{train,val,test}.jsonl` files and their referenced images. I recommend a small pipeline run before full training:
+
+```bash
 python -m pip install -r requirements-train.txt
 python train_lakun.py --train-groups 12 --val-groups 6 --test-groups 6 --epochs 1 --out runs/lakun_pilot
 python train_lakun.py
 ```
 
-Place the original models at `weights/mmbert-base/` and `weights/siglip-so400m-patch14-384/`, and keep the six `dataset/{image,text}_{train,val,test}.jsonl` files plus referenced images in their relative locations. `train_lakun.py` uses all visible local GPUs by default and launches PyTorch DDP automatically when more than one is visible. Pass `--gpus N` to use a specific count or set `CUDA_VISIBLE_DEVICES` to choose devices. It does not combine GPUs from different servers.
+The script uses visible local GPUs (DDP with multiple GPUs), checks validation every 3,000 optimizer steps, runs at most three epochs, and stops after three checks without sufficient loss improvement. The complete `best/` directory contains both encoders and the custom decision components; do not download just the `.safetensors` file. Current checkpoints omit optimizer state and cannot resume the precise interrupted training step. See [`START.md`](START.md).
 
-Full training defaults to at most three epochs, validation every 3,000 optimizer steps, and early stopping after three validation checks without a sufficient loss improvement. The held-out test split is reserved for evaluation after model selection. The default output is `runs/lakun_full/`; the best **complete** checkpoint is `runs/lakun_full/best/`. Download that entire `best/` directory for inference—not only the `.safetensors` file. The checkpoint includes both encoders and the decision components, so inference does not separately load the two original base weights. Current checkpoints do not contain optimizer state and cannot resume an interrupted training run from the exact step.
+## Release boundaries
 
-## Inference
+I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B); both are private at present. The GitHub repository does not bundle weights or data. The ModelScope repository is not a PyPI package: install the source code first. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); before a public weight release I still need to review upstream model/data terms and decide on a separate weight license.
 
-From this project directory, install the local code (no PyPI release is required):
+## Limitations I am seeing
 
-```bash
-python -m pip install -e .
-```
+Within a distribution close to my training data, LaKun is already useful for these typed decisions. In informal use, I find questions with explicit numerical cues or simple inference between supplied options easier for it, **but I have not run a separate controlled benchmark for that observation**. An external spam-classification experiment exposed weak cross-domain transfer. Falling training loss alongside worse validation loss also makes me concerned about over-specialization or a form of “fine-tuning collapse.” I cannot yet prove that the pretrained backbone itself has lost capability; that needs comparisons with the unfine-tuned base, other checkpoints, and human-labeled out-of-domain tests.
 
-With a complete checkpoint already present at `runs/lakun_full/best/`, run the included text-only example:
-
-```bash
-python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
-```
-
-Edit the JSON to supply your own state and questions. For an image request, add an `image` path to that JSON; relative paths are resolved beside the JSON file. The checkpoint is not stored in this Git repository.
-
-To inspect a held-out group when the local dataset is available:
-
-```bash
-python predict_lakun.py --checkpoint /path/to/your/checkpoint --modality image --group-index 0
-```
-
-Or call the library directly with your own image and questions (replace the image path):
-
-```python
-from lakun import LaKunPredictor
-
-model = LaKunPredictor.from_pretrained("/path/to/your/checkpoint")
-result = model.predict(
-    [{"type": "choice", "question": "What is in the image?", "criteria": ["cat", "dog", "car"]}],
-    image="/path/to/your/image.jpg",
-)
-print(result["answers"])
-```
-
-For text-only decisions, omit `image` and pass a `state` string. A group currently supports **one image** and 1–20 questions; multi-image input is not implemented. `noul` questions use `criteria=["false", "true"]`.
-
-## Release and licensing
-
-The [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun), a future PyPI package, and a future ModelScope weight repository are separate releases. **As of this release, the GitHub repository is private; neither the PyPI package nor the ModelScope weights have been published.** The working examples above use a local code installation and a local checkpoint. Do not use `pip install lakun` or a ModelScope repo ID until those releases are verified. The source package never contains model weights or training data.
-
-When publishing, upload the **contents** of `runs/lakun_full/best/` to the root of a ModelScope model repository, not the enclosing `best/` or `runs/` directory. Its root must include `model_config.json`, `lakun.safetensors`, `text_encoder/`, `vision_encoder/`, `tokenizer/`, and `image_processor/`. Keep the filename `lakun.safetensors`: the current loader expects it.
-
-After a verified ModelScope release, install the optional `modelscope-hub` client, download that model to a local directory, then pass the directory to `LaKunPredictor.from_pretrained()`. The current loader does **not** accept a ModelScope repo ID directly. A concrete command with the actual repo ID will be added after publication.
-
-The LaKun source code is Apache-2.0 licensed (see `LICENSE`); the copied Laya component keeps its own Apache-2.0 notice in `lakun/vendor/laya/LICENSE`. A future weight release needs its own model-card license and a review of upstream model/data terms. Do **not** upload the project root, original base weights, dataset, images, API keys, or an enclosing `runs/` directory to the model repository. This custom architecture is loaded through `lakun`, not directly through Transformers `AutoModel.from_pretrained()`.
-
-For a more detailed Chinese startup guide, see [START.md](START.md).
+I therefore do not claim this is a general classifier, a strongly generalizing vision model, or a verified numerical-reasoning model. One-image input, answer-position bias, pseudo-label error, uncalibrated scores, cross-domain behavior, and data provenance remain open limitations.

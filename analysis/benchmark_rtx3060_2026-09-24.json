@@ -1,0 +1,19 @@
+{
+  "date": "2026-09-24",
+  "os": "Windows 11 Home 10.0.22000",
+  "device": "NVIDIA GeForce RTX 3060 12GB",
+  "nvidia_driver": "591.86",
+  "torch": "2.7.1+cu126",
+  "inference_dtype": "float32",
+  "checkpoint": "runs/lakun_full/best",
+  "warmup_per_case": 5,
+  "timed_calls_per_case": 30,
+  "method": "Sequential LaKunPredictor.predict wall time; CUDA synchronized before and after each call; includes preprocessing and result construction; excludes load/download/network",
+  "image_source": "one local held-out image; not included in repository",
+  "cases": {
+    "text_1q": {"median_ms": 17.01, "p95_ms": 19.23, "mean_ms": 17.33},
+    "text_3q": {"median_ms": 18.18, "p95_ms": 18.65, "mean_ms": 18.19},
+    "image_1q": {"median_ms": 162.01, "p95_ms": 168.69, "mean_ms": 163.06},
+    "image_3q": {"median_ms": 168.71, "p95_ms": 171.59, "mean_ms": 168.88}
+  }
+}

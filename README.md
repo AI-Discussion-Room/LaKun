@@ -16,7 +16,7 @@ I built LaKun to answer questions I define in advance about a text state or a si
 | Architecture | mmBERT-base + SigLIP SO400M + visual-token bridge + typed decision head |
 | Parameter count | **756,409,158 (~0.756B)** across 627 checkpoint tensors; `0.7B` is an approximate repository name |
 | Weight size | `lakun.safetensors`: **3,025,715,432 bytes (2.82 GiB)**; complete inference directory: about **2.85 GiB** |
-| Context | At most 512 tokens, reserving 64 visual tokens for images; overlength inputs raise an error |
+| Context | At most 512 tokens, reserving 64 visual tokens for images; overlength inputs are truncated, prioritizing question/options and the start of the state |
 
 I jointly fine-tuned the text and vision encoders. I did **not** load a Laya fine-tuned checkpoint; the decision head uses Laya-derived code with its notice preserved. LaKun's results are not Laya's results.
 
@@ -50,6 +50,8 @@ for answer in result["answers"]:
 ```
 
 `predicted_index` is zero-based and refers to the supplied option order. For `score`, it is the winning **bin index**, not a continuous regression output. The probabilities are softmax values, not calibrated real-world correctness probabilities.
+
+For overlength inputs, the encoder keeps the question and options first (shortening very long options if necessary), then as much of the **beginning of the state** as fits. Discarded trailing text is not considered. Summarize or split long documents if the important evidence appears near the end.
 
 ## What I measured
 

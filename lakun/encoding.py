@@ -1,4 +1,4 @@
-"""One strict 512-token decision encoding shared by training and inference."""
+"""One bounded 512-token decision encoding shared by training and inference."""
 from __future__ import annotations
 
 import torch
@@ -13,6 +13,12 @@ VISUAL_TOKENS = 64
 
 
 def encode_question(tokenizer, state: str, row: dict, image: bool) -> tuple[list[int], list[int]]:
+    """Keep the question/options first, then the leading state tokens that fit.
+
+    Overlong options are capped at 48 tokens. If their combined head exceeds
+    192 tokens, shorten the question and distribute the remaining option budget
+    fairly. Normal-sized inputs keep their original tokenization unchanged.
+    """
     kind = row["type"]
     criteria = row["criteria"]
     q = {"t": kind, "ins": row["question"],
@@ -22,23 +28,41 @@ def encode_question(tokenizer, state: str, row: dict, image: bool) -> tuple[list
         raise ValueError(f"option count changed for {row['id']}")
     mask_token = tokenizer.mask_token
     head = tokenizer(f"{kind} question: {row['question'].replace(mask_token, ' ')}",
-                     add_special_tokens=False)["input_ids"]
-    option_ids = [tokenizer(" " + option.replace(mask_token, " "), add_special_tokens=False)["input_ids"]
+                     add_special_tokens=False, truncation=True, max_length=MAX_HEAD)["input_ids"]
+    option_ids = [tokenizer(" " + option.replace(mask_token, " "), add_special_tokens=False,
+                            truncation=True, max_length=48)["input_ids"]
                   for option in options]
-    if any(len(ids) > 48 for ids in option_ids):
-        raise ValueError(f"option exceeds 48 tokens: {row['id']}")
     if len(head) + sum(1 + len(ids) for ids in option_ids) > MAX_HEAD:
-        raise ValueError(f"head exceeds 192 tokens: {row['id']}")
+        # Reserve up to eight tokens per option before shortening the question.
+        # This matters most for requests near the 20-option limit.
+        reserved = sum(1 + min(len(ids), 8) for ids in option_ids)
+        head = head[:MAX_HEAD - reserved]
+        budget = MAX_HEAD - len(head) - len(option_ids)
+        lengths = [min(1, len(ids)) for ids in option_ids]
+        budget -= sum(lengths)
+        while budget:
+            advanced = False
+            for index, ids in enumerate(option_ids):
+                if lengths[index] < len(ids):
+                    lengths[index] += 1
+                    budget -= 1
+                    advanced = True
+                    if budget == 0:
+                        break
+            if not advanced:
+                break
+        option_ids = [ids[:length] for ids, length in zip(option_ids, lengths)]
     ids = [tokenizer.cls_token_id] + head + [tokenizer.sep_token_id]
     markers = []
     for option in option_ids:
         markers.append(len(ids))
         ids.extend([tokenizer.mask_token_id] + option)
     ids.append(tokenizer.sep_token_id)
-    ids.extend(tokenizer(state.replace(mask_token, " "), add_special_tokens=False)["input_ids"])
+    state_budget = MAX_CONTEXT - (VISUAL_TOKENS if image else 0) - len(ids) - 1
+    if state_budget:
+        ids.extend(tokenizer(state.replace(mask_token, " "), add_special_tokens=False,
+                             truncation=True, max_length=state_budget)["input_ids"])
     ids.append(tokenizer.sep_token_id)
-    if len(ids) + (VISUAL_TOKENS if image else 0) > MAX_CONTEXT:
-        raise ValueError(f"sequence exceeds 512 tokens without truncation: {row['id']}")
     return ids, markers
 
 

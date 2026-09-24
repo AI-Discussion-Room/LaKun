@@ -111,7 +111,8 @@ class LaKunPredictor:
                    "tiny_random_smoke" if fixture else "trained_checkpoint")
 
     def predict_group(self, group: dict) -> dict:
-        batch, pixels = prepare_group(group, self.tokenizer, self.processor, self.device)
+        batch, pixels = prepare_group(group, self.tokenizer, self.processor, self.device,
+                                      getattr(self.model, "visual_tokens", 64))
         with torch.inference_mode():
             probabilities = torch.softmax(self.model(batch, pixels), dim=-1)
         answers = []

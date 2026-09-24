@@ -1,8 +1,13 @@
 # LaKun 启动说明
 
-LaKun 使用原始 mmBERT-base 文本权重、原始 SigLIP SO400M 图像权重，以及受 Laya 启发的决策评分头；不加载 Laya 微调权重。项目包名是 `lakun`。
+LaKun 使用原始 mmBERT-base 文本权重
+原始 SigLIP SO400M 图像权重，
+以及受 Laya 启发的决策评分头，不加载 Laya 微调权重。
+项目包名是 `lakun`
+
 
 ## 放到服务器并训练
+
 
 保留 `lakun/`、`train_lakun.py`、`predict_lakun.py`、`pyproject.toml`、`tokenizer/`、`images/`、`dataset/` 中图文各三份 `*_train.jsonl`／`*_val.jsonl`／`*_test.jsonl`，以及 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/` 中的正式权重及配置。划分按图片／文本 group ID 完成，比例约 8:1:1，同组问题不跨集合。图片路径由数据行引用，必须保留所引用图片及相对目录结构。
 
@@ -45,4 +50,37 @@ result = model.predict(
 print(result["answers"])
 ```
 
-发布到魔塔或 Hugging Face 时，上传 `runs/lakun_full/best/` 的**全部内容**到模型仓库根目录，并让用户安装 `lakun` 代码；本项目的自定义融合层不能只靠两个原始底座权重推理。GitHub 代码仓库不含权重或数据。当前推理接口接受本地检查点目录或 Hugging Face 仓库 ID；魔塔仓库须先下载到本地目录再加载。Laya 派生源码位于 `lakun/vendor/laya/`，请保留该目录的 Apache-2.0 许可证与署名。模型权重的发布许可证需另行确定，原始底座的模型卡和许可也应在发布前核对。当前测试指标基于教师伪标签，不等于人工验证效果。
+### 训练样例
+
+```json
+{"id": "aokvqa__009c9461e876957167dcf50e:q0",
+"group_id": "aokvqa__009c9461e876957167dcf50e",
+"source": "aokvqa",
+"split": "test",
+"images": ["images/aokvqa__009c9461e876957167dcf50e.jpg"],
+ "state": "", "type": "choice", "question": "图中男子佩戴的领带是什么颜色？",
+"criteria": ["红色", "蓝色", "黑色", "黄色"], "selected_index": 1, "target": [0.0, 1.0, 0.0, 0.0],
+"teacher_confidence": 1.0, "teacher_evidence": "图像中清晰可见一条深蓝色的领带位于衬衫外。",
+"token_budget": {"text_tokens": 51, "head_tokens": 47, "state_tokens": 0, "visual_token_reserve": 64, "total_budgeted_tokens": 115,
+ "tokenizer": "convaiinnovations/laya/tokenizer"},
+"status": "pseudo_labeled", "label_source": {"kind": "vlm"}}
+
+
+{"id": "text:5726192412ef1e1510121558:q2",
+"group_id": "text:5726192412ef1e1510121558",
+"source": "deepseek_synthetic", "split": "test",
+"images": [],
+"state": "调度员：仓储机器人电量低于20%时，是立即回充还是先完成当前拣货？
+路径Agent：立即回充。剩余电量支撑不到拣货完成，中途停摆会堵住通道。
+调度员：但回充点只有两个，三台机器人同时去会排队。
+路径Agent：可让电量最低的那台优先，其余两台继续拣货，等它充到50%再轮换。
+调度员：这样整体吞吐量会降多少？\n路径Agent：模拟显示约降4%，但避免堵通道带来的延误约7%。
+调度员：那就按你说的做。",
+"type": "noul",
+"question": "调度员最终否决了路径Agent的轮换方案。",
+"criteria": ["false", "true"], "selected_index": 0, "target": [1.0, 0.0], "teacher_confidence": 0.95,
+"teacher_evidence": "那就按你说的做", "teacher_evidence_is_quote": true,
+"token_budget": {"text_tokens": 312, "head_tokens": 49, "state_tokens": 259, "visual_token_reserve": 0, "total_budgeted_tokens": 312,
+"tokenizer": "convaiinnovations/laya/tokenizer"}, "status": "pseudo_labeled", "language": "简体中文", "domain": "多 Agent 协作", "label_source": {"kind": "llm" }}
+```
+

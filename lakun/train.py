@@ -57,7 +57,7 @@ def make_smoke_components(project_root: Path):
                                        image_size=112, patch_size=16)
     vision_model = SiglipVisionModel(vision_config)
     processor = SiglipImageProcessor(size={"height": 112, "width": 112})
-    return tokenizer, processor, LaKunModel(decision_model, vision_model, VISUAL_TOKENS)
+    return tokenizer, processor, LaKunModel(decision_model, vision_model, 16)
 
 
 def make_pretrained_components(args):
@@ -73,18 +73,40 @@ def optimizer_for(model: LaKunModel, smoke: bool):
     bridge_lr = 1e-3 if smoke else 1e-4
     head_parameters = (list(model.decision.head.parameters()) if model.decision.head is not None else [])
     head_parameters += list(model.decision.type_emb.parameters()) + list(model.decision.scorer.parameters())
-    bridge_parameters = [model.visual_queries] + list(model.visual_attention.parameters())
-    bridge_parameters += list(model.visual_projection.parameters())
+    bridge_parameters = list(model.visual_projection.parameters())
     return torch.optim.AdamW([
-        {"params": model.decision.encoder.parameters(), "lr": text_lr},
-        {"params": head_parameters, "lr": bridge_lr},
-        {"params": model.vision.parameters(), "lr": vision_lr},
-        {"params": bridge_parameters, "lr": bridge_lr},
+        {"name": "text_encoder", "params": model.decision.encoder.parameters(),
+         "lr": text_lr, "base_lr": text_lr},
+        {"name": "decision_head", "params": head_parameters,
+         "lr": bridge_lr, "base_lr": bridge_lr},
+        {"name": "vision_encoder", "params": model.vision.parameters(),
+         "lr": vision_lr, "base_lr": vision_lr},
+        {"name": "visual_bridge", "params": bridge_parameters,
+         "lr": bridge_lr, "base_lr": bridge_lr},
     ], weight_decay=0.01)
 
 
+def shuffle_choice_options(group: dict, rng: random.Random) -> dict:
+    """Randomize nominal choice positions while preserving semantic labels."""
+    rows = []
+    for row in group["rows"]:
+        if row["type"] != "choice" or len(row["criteria"]) < 2:
+            rows.append(row)
+            continue
+        order = list(range(len(row["criteria"])))
+        rng.shuffle(order)
+        inverse = {old: new for new, old in enumerate(order)}
+        updated = dict(row)
+        updated["criteria"] = [row["criteria"][old] for old in order]
+        updated["target"] = [row["target"][old] for old in order]
+        updated["selected_index"] = inverse[row["selected_index"]]
+        rows.append(updated)
+    return dict(group, rows=rows)
+
+
 def run_epoch(model, loader, tokenizer, processor, device, optimizer=None, amp=False,
-              epoch=1, log_every=100, rank=0, start_step=0, on_step=None) -> dict:
+              epoch=1, log_every=100, rank=0, start_step=0, on_step=None,
+              on_train_step=None, shuffle_choices=False, choice_rng=None) -> dict:
     training = optimizer is not None
     core_model = model.module if isinstance(model, DistributedDataParallel) else model
     model.train(training)
@@ -100,7 +122,12 @@ def run_epoch(model, loader, tokenizer, processor, device, optimizer=None, amp=F
     context = torch.enable_grad() if training else torch.inference_mode()
     with context:
         for step, group in enumerate(loader, 1):
-            batch, pixels = prepare_group(group, tokenizer, processor, device)
+            if training and shuffle_choices:
+                group = shuffle_choice_options(group, choice_rng or random)
+            if training and on_train_step is not None:
+                on_train_step(start_step + step)
+            batch, pixels = prepare_group(group, tokenizer, processor, device,
+                                          core_model.visual_tokens)
             if training:
                 optimizer.zero_grad(set_to_none=True)
             autocast = torch.autocast("cuda", dtype=torch.bfloat16) if amp else nullcontext()
@@ -177,7 +204,8 @@ def save_checkpoint(model, tokenizer, processor, args, output: Path):
                    {"text": "jhu-clsp/mmBERT-base", "vision": "google/siglip-so400m-patch14-384"})
     config = {"model_type": "lakun", "architecture": "LaKunModel",
               "base_models": base_models,
-              "visual_tokens": VISUAL_TOKENS,
+              "visual_tokens": model.visual_tokens,
+              "visual_resampler": model.visual_resampler,
               "context_tokens": MAX_CONTEXT,
               "decision_head_layers": len(model.decision.head.layers) if model.decision.head is not None else 0,
               "decision_n_act": model.decision.act_head[-1].out_features}
@@ -187,6 +215,8 @@ def save_checkpoint(model, tokenizer, processor, args, output: Path):
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Joint LaKun mmBERT + SigLIP training")
     parser.add_argument("--project-root", type=Path, default=PROJECT_ROOT)
+    parser.add_argument("--data-root", type=Path, default=None,
+                        help="root containing dataset/ and images/; defaults to project root")
     parser.add_argument("--smoke", action="store_true", help="run small train/val/test groups with tiny random encoders")
     parser.add_argument("--train-groups", type=int, default=None)
     parser.add_argument("--val-groups", type=int, default=None)
@@ -200,6 +230,12 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--log-every", type=int, default=100)
+    parser.add_argument("--freeze-backbones-steps", type=int, default=None,
+                        help="explicit frozen update count; overrides --freeze-backbones-ratio")
+    parser.add_argument("--freeze-backbones-ratio", type=float, default=0.05,
+                        help="freeze text/vision backbones for this fraction of the first epoch")
+    parser.add_argument("--shuffle-choice-options", action=argparse.BooleanOptionalAction,
+                        default=True, help="shuffle nominal choice options online during training")
     args = parser.parse_args(argv)
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     rank = int(os.environ.get("RANK", "0"))
@@ -211,24 +247,34 @@ def main(argv: list[str] | None = None):
             torch.cuda.set_device(local_rank)
         dist.init_process_group(backend=backend, init_method="env://?use_libuv=0")
     project_root = args.project_root.resolve()
+    preferred_data_root = project_root / "new_dataset"
+    default_data_root = (preferred_data_root
+                         if (preferred_data_root / "dataset").is_dir() else project_root)
+    data_root = (args.data_root or default_data_root).resolve()
     args.text_model = args.text_model or project_root / "weights" / "mmbert-base"
     args.vision_model = args.vision_model or project_root / "weights" / "siglip-so400m-patch14-384"
     if args.epochs < 1:
         raise ValueError("epochs must be positive")
+    if args.freeze_backbones_steps is not None and args.freeze_backbones_steps < 0:
+        raise ValueError("freeze-backbones-steps must be nonnegative")
+    if not 0 <= args.freeze_backbones_ratio < 1:
+        raise ValueError("freeze-backbones-ratio must be in [0, 1)")
     if args.eval_every < 1 or args.patience < 1 or args.min_delta < 0:
         raise ValueError("eval-every/patience must be positive and min-delta nonnegative")
     if args.smoke:
         args.train_groups = args.train_groups or 10
         args.val_groups = args.val_groups or 10
         args.test_groups = args.test_groups or 10
+        if args.freeze_backbones_steps is None:
+            args.freeze_backbones_steps = 0
     output = args.out or project_root / "runs" / ("lakun_smoke" if args.smoke else "lakun_full")
     output = output.resolve()
     random.seed(20260923)
     torch.manual_seed(20260923)
     device = torch.device(f"cuda:{local_rank}" if distributed and args.device.startswith("cuda") else args.device)
-    train_data = DecisionGroups(project_root, "train", args.train_groups)
-    val_data = DecisionGroups(project_root, "val", args.val_groups)
-    test_data = DecisionGroups(project_root, "test", args.test_groups)
+    train_data = DecisionGroups(data_root, "train", args.train_groups)
+    val_data = DecisionGroups(data_root, "val", args.val_groups)
+    test_data = DecisionGroups(data_root, "test", args.test_groups)
     if distributed and len(train_data) < world_size:
         raise ValueError(f"{len(train_data)} training groups cannot cover {world_size} ranks")
     train_sampler = (DistributedSampler(train_data, num_replicas=world_size, rank=rank,
@@ -236,20 +282,47 @@ def main(argv: list[str] | None = None):
                      if distributed else None)
     train_loader = DataLoader(train_data, batch_size=None, sampler=train_sampler,
                               shuffle=train_sampler is None, num_workers=0)
+    if args.freeze_backbones_steps is None:
+        args.freeze_backbones_steps = max(1, round(len(train_loader) * args.freeze_backbones_ratio))
     val_subset = (Subset(val_data, range(rank, len(val_data), world_size))
                   if distributed else val_data)
     val_loader = DataLoader(val_subset, batch_size=None, shuffle=False, num_workers=0)
     test_subset = (Subset(test_data, range(rank, len(test_data), world_size))
                    if distributed else test_data)
     test_loader = DataLoader(test_subset, batch_size=None, shuffle=False, num_workers=0)
+    if rank == 0:
+        print(json.dumps({"data_root": str(data_root),
+                          "train_groups": len(train_data),
+                          "val_groups": len(val_data),
+                          "test_groups": len(test_data),
+                          "steps_per_rank": len(train_loader),
+                          "world_size": world_size}, ensure_ascii=False), flush=True)
     tokenizer, processor, model = (make_smoke_components(project_root) if args.smoke
                                    else make_pretrained_components(args))
     model.to(device)
     optimizer = optimizer_for(model, args.smoke)
+    backbone_frozen = None
+
+    def set_backbone_stage(step: int) -> None:
+        nonlocal backbone_frozen
+        frozen = step <= args.freeze_backbones_steps
+        if frozen == backbone_frozen:
+            return
+        backbone_frozen = frozen
+        for group in optimizer.param_groups:
+            if group.get("name") in {"text_encoder", "vision_encoder"}:
+                group["lr"] = 0.0 if frozen else group["base_lr"]
+                for parameter in group["params"]:
+                    parameter.requires_grad_(not frozen)
+        if rank == 0:
+            print(json.dumps({"training_stage": "bridge_and_head" if frozen else "joint_finetune",
+                              "step": step}, ensure_ascii=False), flush=True)
+
     training_model = (DistributedDataParallel(model,
                                               device_ids=[local_rank] if device.type == "cuda" else None,
                                               find_unused_parameters=True, broadcast_buffers=False)
                       if distributed else model)
+    set_backbone_stage(1)
     use_amp = device.type == "cuda" and not args.smoke
     history = []
     validations = []
@@ -298,7 +371,10 @@ def main(argv: list[str] | None = None):
             return check_validation(step, epoch + 1) if step % args.eval_every == 0 else False
         train_raw = run_epoch(training_model, train_loader, tokenizer, processor, device,
                               optimizer, use_amp, epoch + 1, args.log_every, rank,
-                              start_step=global_step, on_step=after_step)
+                              start_step=global_step, on_step=after_step,
+                              on_train_step=set_backbone_stage,
+                              shuffle_choices=args.shuffle_choice_options,
+                              choice_rng=random.Random(20260923 + epoch * world_size + rank))
         global_step += train_raw["steps"]
         train = summarize_epoch(train_raw, device, training=True)
         stopped_early = train_raw["stopped_early"]
@@ -326,6 +402,12 @@ def main(argv: list[str] | None = None):
                   "stopped_early": stopped_early, "test": test,
                   "train_groups": len(train_data), "val_groups": len(val_data), "test_groups": len(test_data),
                   "distributed_world_size": world_size,
+                  "data_root": str(data_root),
+                  "visual_tokens": model.visual_tokens,
+                  "visual_resampler": model.visual_resampler,
+                  "freeze_backbones_steps": args.freeze_backbones_steps,
+                  "freeze_backbones_ratio": args.freeze_backbones_ratio,
+                  "shuffle_choice_options": args.shuffle_choice_options,
                   "dropped_train_groups_per_epoch": len(train_data) % world_size if distributed else 0,
                   "text_model": str(args.text_model) if not args.smoke else "tiny_random_BERT_fixture",
                   "vision_model": str(args.vision_model) if not args.smoke else "tiny_random_SigLIP_fixture"}

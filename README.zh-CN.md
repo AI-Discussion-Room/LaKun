@@ -29,6 +29,16 @@ python -m pip install -e .
 python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
 ```
 
+如果只想自己输入**一道题**，运行 `python main.py --checkpoint runs/lakun_full/best`，按提示填写文本状态（或一张图片的路径）、题型、问题和候选项。也可以不进入交互模式，直接给参数：
+
+```bash
+python main.py --checkpoint runs/lakun_full/best --state "订单已经退款。" --type noul --question "订单是否已经退款？"
+# 单图示例：把 photo.jpg 换成你自己的图片路径
+python main.py --checkpoint runs/lakun_full/best --image photo.jpg --type choice --question "图中是什么？" --criteria 猫 狗 汽车
+```
+
+输出会显示最高分候选项和所有候选项的 softmax 分数。等 PyPI 包正式发布后，同一入口也可以写作 `lakun --checkpoint ...`；**当前尚不能通过 `pip install lakun` 从 PyPI 安装**。
+
 `runs/lakun_full/best/` 是我本地的完整检查点目录，不在 GitHub 里。若你有私有魔塔仓库权限，也可以先下载到本地，再将下载目录传给 `--checkpoint`；当前加载器**不接受仓库 ID 代替本地路径**。
 
 下面是真实 API 的三题同问示例；`state` 在这里输入，图片任务则通过 `image=` 传一张本地图片：
@@ -106,7 +116,7 @@ python train_lakun.py
 
 ## 发布边界
 
-我只把代码放在 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，把权重放在 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)；两处目前均为**私有**。GitHub 仓库不打包权重、图片和原始数据。魔塔仓库不包含可直接 `pip install` 的已发布软件包，运行时仍需先安装本项目代码。这个自定义架构也不能直接通过 Transformers `AutoModel.from_pretrained()` 加载。源码采用 [Apache-2.0](LICENSE)；权重公开前，我还需要完成上游模型/数据条款和权重许可检查。
+我只把代码放在 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，把权重放在 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)；两处目前均为**私有**。我已经完成 PyPI 安装包的本地构建与验证，但**没有上传 PyPI / TestPyPI**，详见[发布清单](RELEASE_PYPI.md)。GitHub 仓库不打包权重、图片和原始数据；将来即使 `pip install lakun` 可用，仍需另外取得完整权重。这个自定义架构也不能直接通过 Transformers `AutoModel.from_pretrained()` 加载。源码采用 [Apache-2.0](LICENSE)；权重公开前，我还需要完成上游模型/数据条款和权重许可检查。
 
 ## 我目前看到的局限
 

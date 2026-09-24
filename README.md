@@ -29,6 +29,16 @@ python -m pip install -e .
 python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
 ```
 
+For **one question at a time**, run `python main.py --checkpoint runs/lakun_full/best` and enter a text state (or image path), question type, question, and options at the prompts. You can also use a non-interactive command:
+
+```bash
+python main.py --checkpoint runs/lakun_full/best --state "The order has been refunded." --type noul --question "Has the order been refunded?"
+# One-image example: replace photo.jpg with your local image path
+python main.py --checkpoint runs/lakun_full/best --image photo.jpg --type choice --question "What is shown?" --criteria cat dog car
+```
+
+The command prints the top option and all softmax scores. Once a PyPI release exists, the installed `lakun --checkpoint ...` command will provide the same interface. **`pip install lakun` is not available from PyPI yet.**
+
 `runs/lakun_full/best/` is my local complete checkpoint, not part of the Git repository. If you have access to the private ModelScope repository, download it first and pass the resulting local directory to `--checkpoint`; the loader does **not** accept a repository ID directly.
 
 Here is the real API with all three question types in one request. Supply `state=` for text, or `image="/path/to/image.jpg"` for one local image:
@@ -106,7 +116,7 @@ The script uses visible local GPUs (DDP with multiple GPUs), checks validation e
 
 ## Release boundaries
 
-I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B); both are private at present. The GitHub repository does not bundle weights or data. The ModelScope repository is not a PyPI package: install the source code first. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); before a public weight release I still need to review upstream model/data terms and decide on a separate weight license.
+I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B); both are private at present. I have built and validated PyPI distribution files locally but **have not uploaded them to PyPI or TestPyPI**; see my [release checklist](RELEASE_PYPI.md). The GitHub repository does not bundle weights or data. Even after a future `pip install lakun` release, users will need to obtain a complete checkpoint separately. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); before a public weight release I still need to review upstream model/data terms and decide on a separate weight license.
 
 ## Limitations I am seeing
 

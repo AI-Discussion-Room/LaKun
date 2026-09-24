@@ -1,6 +1,6 @@
 include LICENSE
-include README.md README.zh-CN.md START.md
-include train_lakun.py predict_lakun.py requirements-train.txt
+include README.md README.zh-CN.md PYPI_README.md START.md
+include main.py train_lakun.py predict_lakun.py requirements-train.txt
 recursive-include examples *.json
 recursive-include lakun *.py LICENSE
 prune dataset

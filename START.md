@@ -9,7 +9,15 @@ LaKun 使用原始 mmBERT-base 文本权重
 ## 放到服务器并训练
 
 
-保留 `lakun/`、`train_lakun.py`、`predict_lakun.py`、`pyproject.toml`、`tokenizer/`、`images/`、`dataset/` 中图文各三份 `*_train.jsonl`／`*_val.jsonl`／`*_test.jsonl`，以及 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/` 中的正式权重及配置。划分按图片／文本 group ID 完成，比例约 8:1:1，同组问题不跨集合。图片路径由数据行引用，必须保留所引用图片及相对目录结构。
+保留 `lakun/`、
+`train_lakun.py`、
+`predict_lakun.py`、
+`pyproject.toml`、
+`tokenizer/`、
+`images/`、
+`dataset/` 中图文各三份 `*_train.jsonl`／`*_val.jsonl`／`*_test.jsonl`
+以及 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/` 中的正式权重及配置。
+划分按图片／文本 group ID 完成，比例约 8:1:1，同组问题不跨集合。图片路径由数据行引用，必须保留所引用图片及相对目录结构。
 
 在项目根目录运行：
 
@@ -20,11 +28,23 @@ python train_lakun.py --train-groups 12 --val-groups 6 --test-groups 6 --epochs 
 python train_lakun.py
 ```
 
-第一行确认当前 `python` 指向带 CUDA 的 PyTorch 环境，第二行安装本目录的 LaKun 包和其他依赖；如果环境中已有满足要求的 PyTorch，就不需要另行安装。第三行是小样本真权重试跑，确认显存与速度；第四行是完整训练。默认最多 3 轮，每 3000 个优化步验证一次，并在每轮结束时验证；验证损失改善至少 0.001 才更新最佳权重，连续 3 次无改善就早停。可用 `--epochs`、`--eval-every`、`--patience`、`--min-delta` 调整。训练期间不看测试集，最后只对最佳权重测一次。`train_lakun.py` 自动使用当前机器可见的全部 GPU，单卡直接运行，多卡自动使用 DDP；卡数不写死。只用部分 GPU 时设置 `CUDA_VISIBLE_DEVICES`。正式训练采用 BF16；不要把分散在不同服务器上的 GPU 当作同一台机器的多卡。
+第一行确认当前向带CUDA的PyTorch 环境
+第二行安装本目录的LaKun包和其他依赖；
+如果环境中已有满足要求的 PyTorch，就不需要另行安装。
+第三行是小样本真权重试跑，确认显存与速度；第四行是完整训练。默认最多 3 轮，每 3000 个优化步验证一次，并在每轮结束时验证；验证损失改善至少 0.001 才更新最佳权重，连续 3 次无改善就早停。
+可用 `--epochs`、`--eval-every`、`--patience`、`--min-delta` 调整。训练期间不看测试集，最后只对最佳权重测一次。`train_lakun.py` 自动使用当前机器可见的全部 GPU，单卡直接运行
+多卡自动使用 DDP；
+`CUDA_VISIBLE_DEVICES`。正式训练采用 BF16；
+
 
 ## 权重保存与下载
 
-全量训练默认写入服务器项目目录 `runs/lakun_full/`，其中最佳完整模型权重在 `runs/lakun_full/best/`。当前设置单文件上限 10GB，正常会得到一个 `best/lakun.safetensors`；`best/` 内还含文本／图像配置、tokenizer、图像预处理器及模型卡。训练报告 `report.json` 和验证轨迹 `validation_history.json` 在上级目录。训练结束后，推理至少需要下载**整个 `runs/lakun_full/best/` 文件夹**，不要只下载某个 `.safetensors`；如需保留训练记录，再下载同级的 `report.json` 和 `validation_history.json`。小样本试跑输出在 `runs/lakun_pilot/`，不是正式模型。可以用 `--out` 指定其他输出目录。最佳检查点是包括两座编码器和决策头的完整权重，推理不再需要额外读取原始两份底座；原始底座建议留下作重新训练与复现实验。
+全量训练默认写入服务器项目目录 `runs/lakun_full/`，其中最佳完整模型权重在 `runs/lakun_full/best/`。
+当前设置单文件上限 10GB，正常会得到一个 `best/lakun.safetensors`；`best/` 内还含文本／图像配置、tokenizer、图像预处理器及模型卡。
+训练报告 `report.json` 和验证轨迹 `validation_history.json` 在上级目录。
+训练结束后，推理至少需要下载**整个 `runs/lakun_full/best/` 文件夹**，不要只下载某个 `.safetensors`；如需保留训练记录，再下载同级的 `report.json` 和 `validation_history.json`。
+小样本试跑输出在 `runs/lakun_pilot/`，不是正式模型。
+可以用 `--out` 指定其他输出目录。最佳检查点是包括两座编码器和决策头的完整权重，推理不再需要额外读取原始两份底座；原始底座建议留下作重新训练与复现实验。
 
 目前保存的是最佳模型的完整推理权重，不含优化器状态；如果训练中断，最佳权重可以推理，但当前脚本不能从中断位置无损续训。重新启动默认从两份原始底座开始，务必使用新的 `--out`，避免覆盖之前的最佳权重。
 
@@ -71,11 +91,11 @@ print(result["answers"])
 "source": "deepseek_synthetic", "split": "test",
 "images": [],
 "state": "调度员：仓储机器人电量低于20%时，是立即回充还是先完成当前拣货？
-路径Agent：立即回充。剩余电量支撑不到拣货完成，中途停摆会堵住通道。
-调度员：但回充点只有两个，三台机器人同时去会排队。
-路径Agent：可让电量最低的那台优先，其余两台继续拣货，等它充到50%再轮换。
-调度员：这样整体吞吐量会降多少？\n路径Agent：模拟显示约降4%，但避免堵通道带来的延误约7%。
-调度员：那就按你说的做。",
+"路径Agent：立即回充。剩余电量支撑不到拣货完成，中途停摆会堵住通道。"
+"调度员：但回充点只有两个，三台机器人同时去会排队。"
+"路径Agent：可让电量最低的那台优先，其余两台继续拣货，等它充到50%再轮换。"
+"调度员：这样整体吞吐量会降多少？\n路径Agent：模拟显示约降4%，但避免堵通道带来的延误约7%。"
+"调度员：那就按你说的做。",
 "type": "noul",
 "question": "调度员最终否决了路径Agent的轮换方案。",
 "criteria": ["false", "true"], "selected_index": 0, "target": [1.0, 0.0], "teacher_confidence": 0.95,

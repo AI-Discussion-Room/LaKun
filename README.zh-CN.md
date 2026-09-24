@@ -109,13 +109,11 @@ print(json.dumps(result, ensure_ascii=False, indent=2))
 
 ![数据规模、三类任务和划分](analysis/figures/01-overview.png)
 
-我在分析里还统计了候选项数量、评分档位、二元标签、7 个图像来源和 50 个文本方向。最值得警惕的是四选一的答案位置偏斜：图像题的 B 项占 **53.15%**、D 项仅 **1.74%**；文本题 B 项占 **46.48%**、D 项仅 **2.98%**。模型可能利用位置规律，而不是真正理解内容。
+我在分析里还统计了候选项数量、评分档位、二元标签、7 个图像来源和 50 个文本方向。四选一题中，图像题的 B 项占 **53.15%**、D 项占 **1.74%**；文本题的 B 项占 **46.48%**、D 项占 **2.98%**。
 
 ![候选项和伪标签分布](analysis/figures/02-options-and-labels.png)
 
 [查看其余两张图：来源/覆盖](analysis/figures/03-coverage.png) · [50 个文本方向及位置分布](analysis/figures/04-domains-and-choice-labels.png) · [完整频数与统计方法](analysis/DATASET_PROFILE.md)
-
-我没有把训练 JSONL、图片或测试样本上传到 GitHub / 魔塔。图表是汇总统计，不包含那 1,000 组测试明细；原始图像来源和数据许可还需要逐项核对。
 
 ## 训练与复现
 

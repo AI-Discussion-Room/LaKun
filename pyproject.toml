@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lakun"
-version = "0.1.1"
+version = "0.1.2"
 description = "Typed decisions from text or one image with LaKun"
 readme = "PYPI_README.md"
 authors = [{ name = "AI Discussion Room" }]

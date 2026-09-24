@@ -1,6 +1,6 @@
 # LaKun 的 PyPI 发布清单
 
-这份清单记录我首次发布 `lakun` 代码包的步骤。PyPI 项目页能否访问，以实际上传结果为准。PyPI 会向所有人开放 wheel 和源码包；即使我的 GitHub 与魔塔仓库仍是 Private，别人也能从源码包获取代码。模型权重不在发行文件内。
+我已在 2026-09-24 将 `lakun 0.1.0` 的 wheel 和源码包发布到 [PyPI](https://pypi.org/project/lakun/0.1.0/)。我核对了线上文件与本地文件的 SHA-256：wheel 为 `406452bc73a6dc6928425385f4fb6cb94b1a8446ecda9bae1035470ce90b923e`，源码包为 `84b182f2fef4921ea70b5c54531a0bc5dbf12e0459ca99299a73f669c69d6b6a`。我还从 PyPI 重新安装了 wheel，确认 `lakun --help` 正常，并用本地完整权重跑通一题文本推理。PyPI 向所有人开放代码发行文件；即使我的 GitHub 与魔塔仓库仍是 Private，别人也能从源码包获取代码。模型权重不在发行文件内。
 
 ## 第 1 步：检查项目
 

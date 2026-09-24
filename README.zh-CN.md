@@ -36,7 +36,7 @@ python main.py
 
 输出会显示最高分候选项和所有候选项的 softmax 分数。也可以把自行下载的完整权重目录传给 `--checkpoint`；目录应包含 `model_config.json`、权重文件、两座编码器的配置、tokenizer 和图像处理器。非交互调用时，再用 `--state` 或 `--image` 和问题参数输入一道题。
 
-下面是真实 API 的三题同问示例；`state` 在这里输入，图片任务则通过 `image=` 传一张本地图片：
+下面是文本状态的三题同问示例，`state` 在这里输入：
 
 ```python
 from lakun import LaKunPredictor
@@ -52,6 +52,27 @@ result = model.predict(
 )
 for answer in result["answers"]:
     print(answer["type"], answer["predicted_index"], answer["probabilities"])
+```
+
+### 传入自己的图片
+
+把 `image_path` 改为本地**真实存在**的图片路径。下面只传一张图，同时问选择、档位评分和二元判断；这段代码只演示调用方式，不预设图片的答案：
+
+```python
+import json
+from lakun import LaKunPredictor
+
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
+image_path = "path/to/your_image.jpg"  # 改成自己的图片路径
+result = model.predict(
+    [
+        {"type": "choice", "question": "图中主要是什么？", "criteria": ["猫", "狗", "汽车"]},
+        {"type": "score", "question": "画面有多清晰？", "criteria": ["模糊", "一般", "清晰"]},
+        {"type": "noul", "question": "图中是否有动物？", "criteria": ["false", "true"]},
+    ],
+    image=image_path,
+)
+print(json.dumps(result, ensure_ascii=False, indent=2))
 ```
 
 `predict()` 返回可序列化为 JSON 的结构化 Python 字典。命令行入口显示的“答案：…”只是方便人阅读的文字，不在 API 返回值中。

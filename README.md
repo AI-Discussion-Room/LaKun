@@ -36,7 +36,7 @@ python main.py
 
 The command prints the top option and all softmax scores. You may also pass a complete local checkpoint directory to `--checkpoint`; it must contain `model_config.json`, weight files, both encoder configurations, the tokenizer, and the image processor. For non-interactive use, specify `--state` or `--image` along with one typed question.
 
-Here is the real API with all three question types in one request. Supply `state=` for text, or `image="/path/to/image.jpg"` for one local image:
+Here is the text-state API with all three question types in one request:
 
 ```python
 from lakun import LaKunPredictor
@@ -52,6 +52,27 @@ result = model.predict(
 )
 for answer in result["answers"]:
     print(answer["type"], answer["predicted_index"], answer["probabilities"])
+```
+
+### Use your own image
+
+Replace `image_path` with a path to an image that **exists on your machine**. This call asks a choice, rating-bin and binary question about the same image; the example does not assume what the image contains:
+
+```python
+import json
+from lakun import LaKunPredictor
+
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
+image_path = "path/to/your_image.jpg"  # Replace with your image path
+result = model.predict(
+    [
+        {"type": "choice", "question": "What is the main subject?", "criteria": ["cat", "dog", "car"]},
+        {"type": "score", "question": "How clear is the image?", "criteria": ["blurry", "average", "clear"]},
+        {"type": "noul", "question": "Is there an animal in the image?", "criteria": ["false", "true"]},
+    ],
+    image=image_path,
+)
+print(json.dumps(result, ensure_ascii=False, indent=2))
 ```
 
 `predict()` returns a structured Python dictionary that can be serialized as JSON. The CLI's human-readable “答案：…” lines are not part of that API result.

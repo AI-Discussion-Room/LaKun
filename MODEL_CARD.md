@@ -57,7 +57,28 @@ for answer in result["answers"]:
     print(answer["type"], answer["predicted_index"], answer["probabilities"])
 ```
 
-图片任务将 `state=` 换成 `image="/path/to/your/image.jpg"` 即可，目前**一组只支持一张图片**。`score` 返回的是分档索引，而不是连续回归数值。所有 `probabilities` 是 softmax 输出；我尚未验证校准程度，**不把它们宣传为真实正确概率**。
+### 传入自己的图片
+
+把 `image_path` 改为本地**真实存在**的图片路径。下面只传一张图，同时问选择、档位评分和二元判断；这段代码只演示调用方式，不预设图片的答案：
+
+```python
+import json
+from lakun import LaKunPredictor
+
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
+image_path = "path/to/your_image.jpg"  # 改成自己的图片路径
+result = model.predict(
+    [
+        {"type": "choice", "question": "图中主要是什么？", "criteria": ["猫", "狗", "汽车"]},
+        {"type": "score", "question": "画面有多清晰？", "criteria": ["模糊", "一般", "清晰"]},
+        {"type": "noul", "question": "图中是否有动物？", "criteria": ["false", "true"]},
+    ],
+    image=image_path,
+)
+print(json.dumps(result, ensure_ascii=False, indent=2))
+```
+
+目前**一组只支持一张图片**。`score` 返回的是分档索引，而不是连续回归数值。所有 `probabilities` 是 softmax 输出；我尚未验证校准程度，**不把它们宣传为真实正确概率**。
 
 对于过长的输入，我优先保留问题及候选项（过长候选项会缩短），再放入状态文本的**开头**；截掉的尾部不参与推理。如果答案线索在长文末尾，请先摘要或分段处理。
 

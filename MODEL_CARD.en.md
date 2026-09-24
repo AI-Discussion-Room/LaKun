@@ -57,7 +57,28 @@ for answer in result["answers"]:
     print(answer["type"], answer["predicted_index"], answer["probabilities"])
 ```
 
-For an image request, replace `state=` with `image="/path/to/image.jpg"`; I currently support one image per request. `predict()` returns a structured Python dictionary; CLI prose such as “answer” is not part of the API result. A `score` answer is a selected bin index, not a continuous regression score. I have not validated probability calibration, so a softmax value is **not** a verified real-world probability of correctness.
+### Use your own image
+
+Replace `image_path` with a path to an image that **exists on your machine**. This call asks a choice, rating-bin and binary question about the same image; the example does not assume what the image contains:
+
+```python
+import json
+from lakun import LaKunPredictor
+
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
+image_path = "path/to/your_image.jpg"  # Replace with your image path
+result = model.predict(
+    [
+        {"type": "choice", "question": "What is the main subject?", "criteria": ["cat", "dog", "car"]},
+        {"type": "score", "question": "How clear is the image?", "criteria": ["blurry", "average", "clear"]},
+        {"type": "noul", "question": "Is there an animal in the image?", "criteria": ["false", "true"]},
+    ],
+    image=image_path,
+)
+print(json.dumps(result, ensure_ascii=False, indent=2))
+```
+
+I currently support one image per request. `predict()` returns a structured Python dictionary; CLI prose such as “answer” is not part of the API result. A `score` answer is a selected bin index, not a continuous regression score. I have not validated probability calibration, so a softmax value is **not** a verified real-world probability of correctness.
 
 For long inputs, I keep the question and options first, then as much of the **beginning of the state** as fits. Discarded trailing text cannot affect the decision; summarize or split a long document if its important evidence appears at the end.
 

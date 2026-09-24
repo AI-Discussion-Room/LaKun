@@ -1,10 +1,10 @@
-# LaKun: typed decisions from text or one image
+# LaKun: multimodal JEV typed decisions
 
 English · [简体中文](README.zh-CN.md) · [Dataset profile and charts](analysis/DATASET_PROFILE.md)
 
-I built LaKun to answer questions I define in advance about a text state or a single image: choose among options, select an ordered rating bin, or decide `false/true`. It returns softmax scores and the highest-scoring option for each question. It does not generate free-form text and is not a chat model. One `predict()` call can contain all three question types, with up to 20 questions and one image.
+I built LaKun as the multimodal version of my JEV typed-decision model. It answers questions I define in advance about a text state or a single image: choose among options, select an ordered rating bin, or decide `false/true`. It returns softmax scores and the highest-scoring option for each question. It does not generate free-form text and is not a chat model. One `predict()` call can contain all three question types, with up to 20 questions and one image.
 
-> **Release status:** I distribute the code package on PyPI. My [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun) and [ModelScope weight repository](https://modelscope.cn/models/hh108801/LaKun-0.7B) remain **private**. The code is Apache-2.0; the weight license is **not yet decided** and must not be inferred from the code license. Installing the package alone does not provide a checkpoint.
+> **Distribution:** I distribute the code package on [PyPI](https://pypi.org/project/lakun/) and keep the complete checkpoint separately in my [ModelScope model repository](https://modelscope.cn/models/hh108801/LaKun-0.7B). Check that repository for its current access settings and weight terms. Installing the code package alone does not provide a checkpoint; the code's Apache-2.0 license does not automatically cover the weights.
 
 ## At a glance
 
@@ -22,37 +22,28 @@ I jointly fine-tuned the text and vision encoders. I did **not** load a Laya fin
 
 ## Quick start
 
-Install a PyTorch build appropriate for your machine first. Install my code package from PyPI:
+Install a PyTorch build appropriate for your machine, then install my code package from PyPI. Pass my ModelScope model ID to automatically download and cache the complete checkpoint on first use; access follows the model repository's current settings. If access is restricted, log in with `ms-hub login` first. The CLI then prompts for your text state or image path and question:
 
 ```bash
 python -m pip install lakun
+lakun --checkpoint hh108801/LaKun-0.7B
 ```
 
-If you have access to my source checkout, you can instead run these commands from the project root:
+If you have access to my source checkout, the equivalent entry point is:
 
 ```bash
 python -m pip install -e .
-python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
+python main.py
 ```
 
-For **one question at a time**, run `python main.py --checkpoint runs/lakun_full/best` and enter a text state (or image path), question type, question, and options at the prompts. You can also use a non-interactive command:
-
-```bash
-python main.py --checkpoint runs/lakun_full/best --state "The order has been refunded." --type noul --question "Has the order been refunded?"
-# One-image example: replace photo.jpg with your local image path
-python main.py --checkpoint runs/lakun_full/best --image photo.jpg --type choice --question "What is shown?" --criteria cat dog car
-```
-
-The command prints the top option and all softmax scores. After a PyPI installation, use `lakun --checkpoint runs/lakun_full/best` for the same interactive interface when running from my project root with its private checkpoint present.
-
-`runs/lakun_full/best/` is my local complete checkpoint, not part of the Git repository. If you have access to the private ModelScope repository, download it first and pass the resulting local directory to `--checkpoint`; the loader does **not** accept a repository ID directly.
+The command prints the top option and all softmax scores. You may also pass a complete local checkpoint directory to `--checkpoint`; it must contain `model_config.json`, weight files, both encoder configurations, the tokenizer, and the image processor. For non-interactive use, specify `--state` or `--image` along with one typed question.
 
 Here is the real API with all three question types in one request. Supply `state=` for text, or `image="/path/to/image.jpg"` for one local image:
 
 ```python
 from lakun import LaKunPredictor
 
-model = LaKunPredictor.from_pretrained("runs/lakun_full/best")
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
 result = model.predict(
     [
         {"type": "choice", "question": "What kind of request is this?", "criteria": ["question", "complaint", "refund"]},
@@ -64,6 +55,8 @@ result = model.predict(
 for answer in result["answers"]:
     print(answer["type"], answer["predicted_index"], answer["probabilities"])
 ```
+
+`predict()` returns a structured Python dictionary that can be serialized as JSON. The CLI's human-readable “答案：…” lines are not part of that API result.
 
 `predicted_index` is zero-based and refers to the supplied option order. For `score`, it is the winning **bin index**, not a continuous regression output. The probabilities are softmax values, not calibrated real-world correctness probabilities.
 
@@ -85,14 +78,14 @@ The labels were generated by `qwen3.8-flash`, not verified by people. These are 
 
 I measured the complete `LaKunPredictor.predict()` call on **Windows 11**, an **NVIDIA GeForce RTX 3060 12GB**, **PyTorch 2.7.1+cu126**, using FP32 inference. For each scenario I ran 5 warm-ups and 30 sequential timed calls, synchronizing CUDA before and after timing. The measurement includes tokenization, image decoding/preprocessing where applicable, forward pass, and result construction. It **excludes** checkpoint loading, download, and network overhead. The image is one local held-out sample; this is a speed test, not an accuracy test.
 
-| Scenario | Questions/call | Median | p95 |
+| Scenario | Questions/call | Mean | p95 |
 |---|---:|---:|---:|
-| Text | 1 | 17.01 ms | 19.23 ms |
-| Text | 3 | 18.18 ms | 18.65 ms |
-| One image | 1 | 162.01 ms | 168.69 ms |
-| One image | 3 | 168.71 ms | 171.59 ms |
+| Text | 1 | 17.33 ms | 19.23 ms |
+| Text | 3 | 18.19 ms | 18.65 ms |
+| One image | 1 | 163.06 ms | 168.69 ms |
+| One image | 3 | 168.88 ms | 171.59 ms |
 
-I include both the [benchmark script](analysis/benchmark_inference.py) and the [measurement record](analysis/benchmark_rtx3060_2026-09-24.json). To rerun: `python -m analysis.benchmark_inference --checkpoint runs/lakun_full/best --image /path/to/one-image.jpg`. These results should not be presented as RTX 4090 throughput or concurrent serving latency.
+I include both the [benchmark script](analysis/benchmark_inference.py) and the [measurement record](analysis/benchmark_rtx3060_2026-09-24.json). To rerun the benchmark, pass your complete checkpoint directory with `--checkpoint` and one local image with `--image`. These results should not be presented as RTX 4090 throughput or concurrent serving latency.
 
 ## My dataset
 
@@ -122,7 +115,7 @@ The script uses visible local GPUs (DDP with multiple GPUs), checks validation e
 
 ## Release boundaries
 
-I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B); both repositories are private at present. I distribute the code package through PyPI, without weights or data; see my [release checklist](RELEASE_PYPI.md). A `pip install lakun` installation still needs a complete checkpoint obtained separately. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); before a public weight release I still need to review upstream model/data terms and decide on a separate weight license.
+I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B). I distribute the code package through PyPI, without weights or data; see my [release checklist](RELEASE_PYPI.md). A `pip install lakun` installation still needs a complete checkpoint obtained separately. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); weight access and licensing follow the model repository's current terms, not the source-code license.
 
 ## Limitations I am seeing
 

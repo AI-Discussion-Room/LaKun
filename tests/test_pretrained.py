@@ -1,11 +1,35 @@
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
+import pytest
 import torch
 from transformers import (AutoModel, ModernBertConfig, ModernBertForMaskedLM,
                           SiglipConfig, SiglipImageProcessor, SiglipModel,
                           SiglipTextConfig, SiglipVisionConfig)
 
-from lakun.pretrained import load_siglip_vision, require_siglip_checkpoint
+from lakun.pretrained import (load_siglip_vision, modelscope_repo_id,
+                              require_siglip_checkpoint, resolve_lakun_checkpoint)
+
+
+def test_modelscope_id_downloads_complete_repo(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    class FakeHubApi:
+        def download_repo(self, repo_id, repo_type):
+            calls.append((repo_id, repo_type))
+            return str(tmp_path)
+
+    monkeypatch.setitem(sys.modules, "modelscope_hub", SimpleNamespace(HubApi=FakeHubApi))
+    for reference in ("hh108801/LaKun-0.7B", "modelscope://hh108801/LaKun-0.7B",
+                      "https://modelscope.cn/models/hh108801/LaKun-0.7B"):
+        assert resolve_lakun_checkpoint(reference) == tmp_path
+    assert calls == [("hh108801/LaKun-0.7B", "model")] * 3
+
+
+def test_invalid_modelscope_id_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Invalid ModelScope"):
+        modelscope_repo_id("modelscope://invalid")
 
 
 def test_load_only_vision_weights(tmp_path: Path) -> None:

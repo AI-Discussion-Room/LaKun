@@ -10,12 +10,9 @@ from typing import Callable
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="向 LaKun 输入一道选择、评分或二元问题。省略参数时进入交互输入。",
-        epilog=(
-            '图片示例：lakun --checkpoint runs/lakun_full/best --image photo.jpg '
-            '--type choice --question "图中是什么？" --criteria 猫 狗 汽车'
-        ),
+        epilog="--checkpoint 可输入魔塔模型 ID 或完整本地权重目录；权重不随安装包提供。",
     )
-    parser.add_argument("--checkpoint", default="runs/lakun_full/best", help="完整的本地检查点目录")
+    parser.add_argument("--checkpoint", help="魔塔模型 ID 或完整本地权重目录；不提供时交互输入")
     parser.add_argument("--image", type=Path, help="可选：单张本地图片路径（jpg/png 等）")
     parser.add_argument("--state", help="文本状态；可与 --image 同时提供")
     parser.add_argument("--type", dest="kind", choices=("choice", "score", "noul"), help="问题类型")
@@ -23,6 +20,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--criteria", nargs="+", help="choice/score 候选项，按顺序列出")
     parser.add_argument("--device", choices=("cpu", "cuda"), help="默认自动选择 GPU 或 CPU")
     return parser
+
+
+def resolve_checkpoint(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    input_fn: Callable[[str], str] = input,
+) -> str | Path:
+    """Require a user-selected checkpoint; never guess the author's output path."""
+    raw = args.checkpoint
+    if raw is None:
+        raw = input_fn("完整权重目录或魔塔模型 ID：")
+    raw = str(raw).strip().strip('"')
+    if not raw:
+        parser.error("请提供完整权重目录或魔塔模型 ID；PyPI 包不包含权重")
+    from .pretrained import modelscope_repo_id
+
+    if modelscope_repo_id(raw) is not None:
+        return raw
+    checkpoint = Path(raw).expanduser().resolve()
+    if not checkpoint.is_dir():
+        parser.error(f"完整权重目录不存在：{checkpoint}")
+    if not (checkpoint / "model_config.json").is_file():
+        parser.error(f"这不是完整的 LaKun 检查点目录（缺少 model_config.json）：{checkpoint}")
+    return checkpoint
 
 
 def resolve_request(
@@ -79,14 +100,13 @@ def main(argv: list[str] | None = None) -> None:
                 stream.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args(argv)
+    checkpoint = resolve_checkpoint(args, parser)
     questions, state, image = resolve_request(args, parser)
 
-    # 从项目根目录运行的单图示例：
-    # python main.py --checkpoint runs/lakun_full/best --image photo.jpg \
-    #   --type choice --question "图中是什么？" --criteria 猫 狗 汽车
+    # 单图示例：运行 lakun，输入魔塔模型 ID，再输入本地图片路径和问题。
     from .inference import LaKunPredictor
 
-    model = LaKunPredictor.from_pretrained(args.checkpoint, device=args.device)
+    model = LaKunPredictor.from_pretrained(checkpoint, device=args.device)
     answer = model.predict(questions, state=state, image=image)["answers"][0]
     winner = answer["predicted_index"]
     print(f"答案：{answer['criteria'][winner]}（索引 {winner}）")

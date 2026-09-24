@@ -4,7 +4,29 @@ from pathlib import Path
 
 import pytest
 
-from lakun.cli import build_parser, main, resolve_request
+from lakun.cli import build_parser, main, resolve_checkpoint, resolve_request
+
+
+def test_checkpoint_has_no_author_specific_default(tmp_path: Path):
+    parser = build_parser()
+    assert parser.parse_args([]).checkpoint is None
+    checkpoint = tmp_path / "downloaded-model"
+    checkpoint.mkdir()
+    (checkpoint / "model_config.json").write_text("{}", encoding="utf-8")
+    assert resolve_checkpoint(parser.parse_args([]), parser,
+                              input_fn=lambda _: str(checkpoint)) == checkpoint.resolve()
+
+
+def test_checkpoint_must_be_complete(tmp_path: Path):
+    parser = build_parser()
+    with pytest.raises(SystemExit, match="2"):
+        resolve_checkpoint(parser.parse_args(["--checkpoint", str(tmp_path)]), parser)
+
+
+def test_checkpoint_accepts_modelscope_id():
+    parser = build_parser()
+    args = parser.parse_args(["--checkpoint", "hh108801/LaKun-0.7B"])
+    assert resolve_checkpoint(args, parser) == "hh108801/LaKun-0.7B"
 
 
 def test_text_noul_does_not_need_criteria():
@@ -46,7 +68,8 @@ def test_rejects_duplicate_options_before_model_load():
         resolve_request(args, parser)
 
 
-def test_cli_renders_predicted_option(monkeypatch, capsys):
+def test_cli_renders_predicted_option(monkeypatch, capsys, tmp_path: Path):
+    (tmp_path / "model_config.json").write_text("{}", encoding="utf-8")
     class FakePredictor:
         def predict(self, questions, *, state, image):
             assert questions[0]["criteria"] == ["false", "true"]
@@ -56,7 +79,7 @@ def test_cli_renders_predicted_option(monkeypatch, capsys):
 
     from lakun.inference import LaKunPredictor
     monkeypatch.setattr(LaKunPredictor, "from_pretrained", lambda *a, **kw: FakePredictor())
-    main(["--checkpoint", "unused", "--state", "订单已经退款",
+    main(["--checkpoint", str(tmp_path), "--state", "订单已经退款",
           "--type", "noul", "--question", "是否退款？"])
     output = capsys.readouterr().out
     assert "答案：true" in output and "0.8000" in output

@@ -1,10 +1,10 @@
-# LaKun：让文字或单张图片回答类型化问题
+# LaKun：JEV 决策类型模型的多模态版本
 
 [English](README.md) · 简体中文 · [数据集完整统计](analysis/DATASET_PROFILE.md)
 
-我做 LaKun，是想让模型面对一段状态或一张图片时，直接回答我预先定义的问题：从候选项中选择、按档位评分，或者回答 `false/true`。它输出每个候选项的 softmax 分数和最高分选项，不生成自由文本，也不是聊天模型。一次 `predict()` 可以同时提交这三类问题；目前一个请求最多 20 题、最多一张图片。
+LaKun 是我做的 JEV 决策类型模型的多模态版本。面对一段状态或一张图片，它直接回答我预先定义的问题：从候选项中选择、按档位评分，或者回答 `false/true`。它输出每个候选项的 softmax 分数和最高分选项，不生成自由文本，也不是聊天模型。一次 `predict()` 可以同时提交这三类问题；目前一个请求最多 20 题、最多一张图片。
 
-> **发布状态：**我通过 PyPI 分发代码包。源码位于私有 GitHub 仓库，完整权重位于私有魔塔仓库 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)。代码采用 Apache-2.0；**权重的公开许可尚未确定**，我不会把源码许可自动等同于权重许可。只安装代码包不能完成推理。
+> **发布方式：**我通过 [PyPI](https://pypi.org/project/lakun/) 分发代码包，完整权重单独放在[魔塔模型仓库 `hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)。权重能否下载及其使用条款，以模型仓库当前设置为准。只安装代码包不能完成推理；源码的 Apache-2.0 许可不自动涵盖权重。
 
 ## 一眼看懂
 
@@ -22,37 +22,28 @@
 
 ## 先跑起来
 
-先安装与本机驱动匹配的 PyTorch，再从 PyPI 安装我的代码包：
+先安装与本机驱动匹配的 PyTorch，再从 PyPI 安装我的代码包。传入我的魔塔模型 ID，首次使用会自动下载并缓存完整权重；是否可下载以模型仓库当前权限为准，若需要访问权限，先运行 `ms-hub login`。随后按提示输入文本状态或图片路径，以及问题：
 
 ```bash
 python -m pip install lakun
+lakun --checkpoint hh108801/LaKun-0.7B
 ```
 
-已有源码访问权限时，也可以在项目根目录改用以下命令：
+已有源码访问权限时，也可以在项目根目录改用以下入口：
 
 ```bash
 python -m pip install -e .
-python predict_lakun.py --checkpoint runs/lakun_full/best --input examples/text_input.json
+python main.py
 ```
 
-如果只想自己输入**一道题**，运行 `python main.py --checkpoint runs/lakun_full/best`，按提示填写文本状态（或一张图片的路径）、题型、问题和候选项。也可以不进入交互模式，直接给参数：
-
-```bash
-python main.py --checkpoint runs/lakun_full/best --state "订单已经退款。" --type noul --question "订单是否已经退款？"
-# 单图示例：把 photo.jpg 换成你自己的图片路径
-python main.py --checkpoint runs/lakun_full/best --image photo.jpg --type choice --question "图中是什么？" --criteria 猫 狗 汽车
-```
-
-输出会显示最高分候选项和所有候选项的 softmax 分数。通过 PyPI 安装后，在含有上述私有检查点的项目根目录下，也可以运行 `lakun --checkpoint runs/lakun_full/best` 进入相同的交互界面。
-
-`runs/lakun_full/best/` 是我本地的完整检查点目录，不在 GitHub 里。若你有私有魔塔仓库权限，也可以先下载到本地，再将下载目录传给 `--checkpoint`；当前加载器**不接受仓库 ID 代替本地路径**。
+输出会显示最高分候选项和所有候选项的 softmax 分数。也可以把自行下载的完整权重目录传给 `--checkpoint`；目录应包含 `model_config.json`、权重文件、两座编码器的配置、tokenizer 和图像处理器。非交互调用时，再用 `--state` 或 `--image` 和问题参数输入一道题。
 
 下面是真实 API 的三题同问示例；`state` 在这里输入，图片任务则通过 `image=` 传一张本地图片：
 
 ```python
 from lakun import LaKunPredictor
 
-model = LaKunPredictor.from_pretrained("runs/lakun_full/best")
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
 result = model.predict(
     [
         {"type": "choice", "question": "这是什么类型的请求？", "criteria": ["咨询", "投诉", "退款"]},
@@ -64,6 +55,8 @@ result = model.predict(
 for answer in result["answers"]:
     print(answer["type"], answer["predicted_index"], answer["probabilities"])
 ```
+
+`predict()` 返回可序列化为 JSON 的结构化 Python 字典。命令行入口显示的“答案：…”只是方便人阅读的文字，不在 API 返回值中。
 
 `predicted_index` 从 0 开始，对应你传入的 `criteria` 顺序。`score` 目前返回**最高分档位的索引**，不是连续回归分数。这里的 `probabilities` 是候选项 softmax 值；我还没有做可靠的概率校准测试，不能把 `0.9` 理解为“现实中有 90% 的正确率”。
 
@@ -85,14 +78,14 @@ for answer in result["answers"]:
 
 我用本项目完整检查点在 **Windows 11、NVIDIA GeForce RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32 推理** 下测量。每种场景先预热 5 次，再串行执行 30 次；每次计时前后同步 CUDA。计时覆盖 `predict()` 的分词、图片读取与预处理、前向传播和结果整理；**不含**模型加载、下载或网络传输。图片来自本地测试集中的一张样本，测速不是准确率评估。
 
-| 场景 | 每次问题数 | 中位延迟 | p95 延迟 |
+| 场景 | 每次问题数 | 平均延迟 | p95 延迟 |
 |---|---:|---:|---:|
-| 纯文本 | 1 | 17.01 ms | 19.23 ms |
-| 纯文本 | 3 | 18.18 ms | 18.65 ms |
-| 单张图片 | 1 | 162.01 ms | 168.69 ms |
-| 单张图片 | 3 | 168.71 ms | 171.59 ms |
+| 纯文本 | 1 | 17.33 ms | 19.23 ms |
+| 纯文本 | 3 | 18.19 ms | 18.65 ms |
+| 单张图片 | 1 | 163.06 ms | 168.69 ms |
+| 单张图片 | 3 | 168.88 ms | 171.59 ms |
 
-我把[可复测脚本](analysis/benchmark_inference.py)和[本次测量记录](analysis/benchmark_rtx3060_2026-09-24.json)都放在 `analysis/`。复测命令：`python -m analysis.benchmark_inference --checkpoint runs/lakun_full/best --image /path/to/one-image.jpg`。这组结果仅代表上述机器和输入，不等于 AutoDL 的 4090 速度，也不是多请求并发吞吐。
+我把[可复测脚本](analysis/benchmark_inference.py)和[本次测量记录](analysis/benchmark_rtx3060_2026-09-24.json)都放在 `analysis/`。复测时用 `--checkpoint` 指定自己的完整权重目录，用 `--image` 指定一张本地图片。这组结果仅代表上述机器和输入，不等于 AutoDL 的 4090 速度，也不是多请求并发吞吐。
 
 ## 我构建的数据集
 
@@ -122,7 +115,7 @@ python train_lakun.py
 
 ## 发布边界
 
-我把代码放在 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，把权重放在 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)；两处仓库目前均为**私有**。我通过 PyPI 分发不含权重与数据的代码包，详见[发布清单](RELEASE_PYPI.md)。即使 `pip install lakun` 成功，仍需另外取得完整权重。这个自定义架构也不能直接通过 Transformers `AutoModel.from_pretrained()` 加载。源码采用 [Apache-2.0](LICENSE)；权重公开前，我还需要完成上游模型/数据条款和权重许可检查。
+我把代码放在 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，把权重放在 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)。我通过 PyPI 分发不含权重与数据的代码包，详见[发布清单](RELEASE_PYPI.md)。即使 `pip install lakun` 成功，仍需另外取得完整权重。这个自定义架构也不能直接通过 Transformers `AutoModel.from_pretrained()` 加载。源码采用 [Apache-2.0](LICENSE)；权重的获取与使用以模型仓库当前条款为准，不能从源码许可推断。
 
 ## 我目前看到的局限
 

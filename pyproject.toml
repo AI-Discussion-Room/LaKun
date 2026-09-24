@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lakun"
-version = "0.1.0"
+version = "0.1.1"
 description = "Typed decisions from text or one image with LaKun"
 readme = "PYPI_README.md"
 authors = [{ name = "AI Discussion Room" }]
@@ -17,6 +17,7 @@ dependencies = [
   "accelerate>=0.26,<2",
   "safetensors>=0.4",
   "huggingface-hub>=0.20",
+  "modelscope-hub>=0.4.4,<1",
   "Pillow>=10",
   "numpy>=1.24",
 ]

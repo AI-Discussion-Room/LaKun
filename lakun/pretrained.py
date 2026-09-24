@@ -2,12 +2,29 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import torch
 from safetensors import safe_open
 from transformers import (AutoImageProcessor, AutoModel, AutoTokenizer,
                           SiglipVisionConfig, SiglipVisionModel)
+
+
+MODELSCOPE_REPO = "hh108801/LaKun-0.7B"
+
+
+def modelscope_repo_id(checkpoint: str) -> str | None:
+    """Recognize LaKun's ModelScope ID and explicit ModelScope references."""
+    if checkpoint == MODELSCOPE_REPO:
+        return checkpoint
+    for prefix in ("modelscope://", "https://modelscope.cn/models/"):
+        if checkpoint.startswith(prefix):
+            repo_id = checkpoint[len(prefix):].rstrip("/")
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo_id):
+                raise ValueError(f"Invalid ModelScope model ID: {repo_id}")
+            return repo_id
+    return None
 
 
 def require_text_tokenizer(root: str | Path) -> Path:
@@ -81,10 +98,15 @@ def initialize_base_components(text_root: str | Path, vision_root: str | Path):
 
 
 def resolve_lakun_checkpoint(path_or_repo: str) -> Path:
-    """Load a local training output or a future Hugging Face LaKun model repository."""
+    """Resolve a local path, ModelScope repository, or Hugging Face repository."""
     path = Path(path_or_repo).expanduser()
     if path.is_dir():
         return path.resolve()
+    model_id = modelscope_repo_id(path_or_repo)
+    if model_id is not None:
+        from modelscope_hub import HubApi
+
+        return Path(HubApi().download_repo(model_id, "model"))
     if path.is_absolute() or path_or_repo.startswith((".", "~")):
         raise FileNotFoundError(path)
     if "/" not in path_or_repo:

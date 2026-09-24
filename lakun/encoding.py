@@ -12,7 +12,8 @@ MAX_HEAD = 192
 VISUAL_TOKENS = 64
 
 
-def encode_question(tokenizer, state: str, row: dict, image: bool) -> tuple[list[int], list[int]]:
+def encode_question(tokenizer, state: str, row: dict, image: bool,
+                    visual_tokens: int = VISUAL_TOKENS) -> tuple[list[int], list[int]]:
     """Keep the question/options first, then the leading state tokens that fit.
 
     Overlong options are capped at 48 tokens. If their combined head exceeds
@@ -58,7 +59,7 @@ def encode_question(tokenizer, state: str, row: dict, image: bool) -> tuple[list
         markers.append(len(ids))
         ids.extend([tokenizer.mask_token_id] + option)
     ids.append(tokenizer.sep_token_id)
-    state_budget = MAX_CONTEXT - (VISUAL_TOKENS if image else 0) - len(ids) - 1
+    state_budget = MAX_CONTEXT - (visual_tokens if image else 0) - len(ids) - 1
     if state_budget:
         ids.extend(tokenizer(state.replace(mask_token, " "), add_special_tokens=False,
                              truncation=True, max_length=state_budget)["input_ids"])
@@ -66,14 +67,16 @@ def encode_question(tokenizer, state: str, row: dict, image: bool) -> tuple[list
     return ids, markers
 
 
-def prepare_group(group: dict, tokenizer, processor, device: torch.device) -> tuple[dict, torch.Tensor | None]:
+def prepare_group(group: dict, tokenizer, processor, device: torch.device,
+                  visual_tokens: int = VISUAL_TOKENS) -> tuple[dict, torch.Tensor | None]:
     rows = group["rows"]
-    encoded = [encode_question(tokenizer, group["state"], row, group["modality"] == "image")
+    encoded = [encode_question(tokenizer, group["state"], row, group["modality"] == "image",
+                               visual_tokens)
                for row in rows]
     count = len(rows)
     length = max(len(ids) for ids, _ in encoded)
     choices = max(len(row["criteria"]) for row in rows)
-    if length + (VISUAL_TOKENS if group["modality"] == "image" else 0) > MAX_CONTEXT:
+    if length + (visual_tokens if group["modality"] == "image" else 0) > MAX_CONTEXT:
         raise ValueError(f"padded group exceeds 512 tokens: {group['group_id']}")
     input_ids = torch.full((count, length), tokenizer.pad_token_id, dtype=torch.long)
     attention_mask = torch.zeros((count, length), dtype=torch.long)

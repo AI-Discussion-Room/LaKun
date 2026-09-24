@@ -109,13 +109,11 @@ I unified images and text into **one state + multiple typed questions** per grou
 
 ![Dataset size, question types and splits](analysis/figures/01-overview.png)
 
-The profile also covers option counts, rating bins, seven image source subsets and 50 synthetic text topics. One important bias: among four-option questions, option B is the teacher's answer in **53.15%** of image questions and **46.48%** of text questions; D is only **1.74%** and **2.98%**, respectively. The model may exploit answer position rather than content.
+The profile also covers option counts, rating bins, seven image source subsets and 50 synthetic text topics. Among four-option questions, option B is the teacher's answer in **53.15%** of image questions and **46.48%** of text questions; D accounts for **1.74%** and **2.98%**, respectively.
 
 ![Option and pseudo-label distributions](analysis/figures/02-options-and-labels.png)
 
 [Source and coverage chart](analysis/figures/03-coverage.png) · [All 50 text topics and answer positions](analysis/figures/04-domains-and-choice-labels.png) · [Full dataset profile](analysis/DATASET_PROFILE.md). The chart labels are currently Chinese.
-
-I have not uploaded the raw JSONL, images, or the 1,000 inspected test examples to GitHub or ModelScope. These charts contain aggregates only. Upstream image/data terms need further review before any dataset release.
 
 ## Training and reproducibility
 

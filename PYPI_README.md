@@ -1,46 +1,52 @@
-# LaKun
+# LaKun：文本与单图的类型化决策模型
 
-I built LaKun to answer caller-defined **choice**, ordered **score**, and binary **noul** questions about a text state or one local image. It returns a softmax score for each supplied option; it is not a free-form text generator. This package contains inference and training code, **not** the 2.82 GiB checkpoint or any dataset.
+我做 LaKun，是为了让模型针对一段文本状态或一张图片，直接回答我指定的选择、档位评分和二元判断问题。它输出每个候选项的 softmax 分数与最高分选项，不生成自由文本。一次调用最多可提交 20 道问题，目前每次最多处理一张图片。
 
-The selected checkpoint has 756,409,158 parameters. On the creator's Windows 11 / RTX 3060 12GB machine, warm `predict()` calls had median latency of 17.01 ms for one text question and 162.01 ms for one image question (30 sequential calls after five warm-ups, FP32, PyTorch 2.7.1+cu126). These are device-specific measurements, not throughput or accuracy claims.
+这个 PyPI 安装包提供推理代码，源码包另含训练脚本；两种发行文件都**不包含权重或数据集**。我的完整检查点有 756,409,158 个参数；`lakun.safetensors` 大小为 3,025,715,432 字节（2.82 GiB），完整推理目录约 2.85 GiB。`0.7B` 是模型仓库名中的近似称呼。
 
-## Install and run
+## 安装与使用
 
-Install a PyTorch build suited to your system, then install this package **after its PyPI release**:
+先安装适合本机的 PyTorch，再安装 LaKun：
 
 ```bash
 python -m pip install lakun
 ```
 
-You also need a **complete local LaKun checkpoint directory**. `lakun` does not download weights by itself, and `LaKunPredictor.from_pretrained()` expects a local directory rather than a ModelScope repository ID. The checkpoint is currently held in a private ModelScope repository; public weight access and its license have not yet been finalized. Installing this package alone does not make the model usable without a checkpoint.
-
-With a checkpoint available locally, ask a single question from the command line:
+我目前还没有公开模型权重。只有已经取得**完整本地检查点目录**的人才能运行推理；安装代码包不会下载权重，`--checkpoint` 也不接受魔塔仓库 ID。我的源码项目中，检查点目录是 `runs/lakun_full/best`。在该目录存在的项目根目录下运行下面的命令，就能交互输入一道题、文本状态或本地图片路径：
 
 ```bash
-lakun --checkpoint /path/to/LaKun-0.7B --state "The order has been refunded." --type noul --question "Has the order been refunded?"
-# Image example: replace photo.jpg with your own image path
-lakun --checkpoint /path/to/LaKun-0.7B --image photo.jpg --type choice --question "What is shown?" --criteria cat dog car
+lakun --checkpoint runs/lakun_full/best
 ```
 
-Or use the Python API:
+纯文本单题也可以直接传参：
+
+```bash
+lakun --checkpoint runs/lakun_full/best --state "订单已经退款。" --type noul --question "订单是否已经退款？"
+```
+
+在交互模式下，输入图片路径即可问单图问题；选择题的候选项用 `|` 分隔。需要在脚本中使用时：
 
 ```python
 from lakun import LaKunPredictor
 
-model = LaKunPredictor.from_pretrained("/path/to/LaKun-0.7B")
+model = LaKunPredictor.from_pretrained("runs/lakun_full/best")
 result = model.predict(
-    [{"type": "choice", "question": "What kind of request is this?", "criteria": ["question", "complaint", "refund"]}],
-    state="I was charged twice. Please refund the duplicate payment.",
+    [{"type": "choice", "question": "这是什么类型的请求？", "criteria": ["咨询", "投诉", "退款"]}],
+    state="用户说：我被重复扣费了，请尽快退款。",
 )
 print(result["answers"][0])
 ```
 
-`choice` accepts 2–20 options, `score` accepts 3–20 bins, and `noul` uses fixed `false/true` options. One call can ask up to 20 questions, but currently accepts only one image. Long inputs are truncated to the 512-token context: questions/options take priority, followed by the beginning of the state. The softmax scores have not been validated as calibrated real-world probabilities.
+`choice` 接受 2–20 个候选项，`score` 接受 3–20 个有序档位，`noul` 固定为 `false/true`。`predicted_index` 从 0 开始。上下文最多 512 token；输入超限时，我的实现优先保留问题和候选项，再保留状态开头。这里的 softmax 分数未经概率校准，不能直接当成现实中的正确率。
 
-## Evaluation and limits
+## 我测到的表现
 
-Against held-out **teacher-generated pseudo-labels**, the selected checkpoint agreed on 83.11% of choice, 83.37% of score, and 80.92% of noul questions (12,703 groups / 38,141 questions). These are not human-verified or general-purpose accuracy figures. The data were generated with `qwen3.8-flash`; answer-position bias and weak cross-domain transfer remain important limitations.
+在按组隔离的测试集上，所选检查点与 `qwen3.8-flash` 生成的伪标签的一致率为：选择题 **83.11%**、评分题 **83.37%**、二元题 **80.92%**，共 12,703 组、38,141 题。这不是人工核验的通用准确率。我以验证损失选出第 16,882 步检查点；第二轮训练损失继续下降、验证损失反而上升，所以没有保留更晚的权重。
 
-I observe good behavior on questions close to my training distribution, particularly some with explicit numerical cues or simple inference between given options, but I have not independently benchmarked that observation. An external spam-classification experiment was much weaker, and worsening validation loss in the second training epoch suggests over-specialization or possible fine-tuning collapse. That is **not yet proof** that the base model lost its general capability.
+我在 Windows 11、RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32 下，先预热 5 次，再串行测 30 次 `predict()`：纯文本单题中位耗时 **17.01 ms**，单图单题 **162.01 ms**。计时包含分词、图片预处理（如适用）、前向传播和结果整理，不含权重加载、下载和网络耗时；其他硬件的速度可能不同。
 
-Source code is Apache-2.0 licensed. Model weights require a separate license decision. The GitHub source and ModelScope weight repositories are currently private; do not interpret the code license as permission to redistribute the weights.
+## 我目前看到的局限
+
+在接近我的训练数据分布的题目上，LaKun 已有可用表现；我观察到带明确数值线索或候选项间简单推理的任务比较容易答好，但还没有独立分项测评来证明这一点。外部垃圾评论分类实验显示跨领域迁移较弱；第二轮验证损失变差也让我警惕过度专用化，甚至可能存在微调坍塌，但尚不能证明底座能力已经丧失。数据伪标签、答案位置偏斜、单图限制及未经校准的分数，都需要谨慎对待。
+
+源码采用 Apache-2.0。**模型权重的许可尚未确定，也尚未公开**；源码许可不等于权重许可。我的 GitHub 源码仓库和魔塔权重仓库目前都是私有的。

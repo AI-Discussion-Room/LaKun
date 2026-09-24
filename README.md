@@ -4,7 +4,7 @@ English · [简体中文](README.zh-CN.md) · [Dataset profile and charts](analy
 
 I built LaKun to answer questions I define in advance about a text state or a single image: choose among options, select an ordered rating bin, or decide `false/true`. It returns softmax scores and the highest-scoring option for each question. It does not generate free-form text and is not a chat model. One `predict()` call can contain all three question types, with up to 20 questions and one image.
 
-> **Release status:** My [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun) and [ModelScope weight repository](https://modelscope.cn/models/hh108801/LaKun-0.7B) are both **private**. I have not published a PyPI package. The code is Apache-2.0; the weight license is **not yet decided** and must not be inferred from the code license.
+> **Release status:** I distribute the code package on PyPI. My [GitHub source repository](https://github.com/AI-Discussion-Room/LaKun) and [ModelScope weight repository](https://modelscope.cn/models/hh108801/LaKun-0.7B) remain **private**. The code is Apache-2.0; the weight license is **not yet decided** and must not be inferred from the code license. Installing the package alone does not provide a checkpoint.
 
 ## At a glance
 
@@ -22,7 +22,13 @@ I jointly fine-tuned the text and vision encoders. I did **not** load a Laya fin
 
 ## Quick start
 
-Install from this source checkout, **not** with `pip install lakun` (there is no PyPI release yet). Install a PyTorch build appropriate for your machine first:
+Install a PyTorch build appropriate for your machine first. Install my code package from PyPI:
+
+```bash
+python -m pip install lakun
+```
+
+If you have access to my source checkout, you can instead run these commands from the project root:
 
 ```bash
 python -m pip install -e .
@@ -37,7 +43,7 @@ python main.py --checkpoint runs/lakun_full/best --state "The order has been ref
 python main.py --checkpoint runs/lakun_full/best --image photo.jpg --type choice --question "What is shown?" --criteria cat dog car
 ```
 
-The command prints the top option and all softmax scores. Once a PyPI release exists, the installed `lakun --checkpoint ...` command will provide the same interface. **`pip install lakun` is not available from PyPI yet.**
+The command prints the top option and all softmax scores. After a PyPI installation, use `lakun --checkpoint runs/lakun_full/best` for the same interactive interface when running from my project root with its private checkpoint present.
 
 `runs/lakun_full/best/` is my local complete checkpoint, not part of the Git repository. If you have access to the private ModelScope repository, download it first and pass the resulting local directory to `--checkpoint`; the loader does **not** accept a repository ID directly.
 
@@ -116,7 +122,7 @@ The script uses visible local GPUs (DDP with multiple GPUs), checks validation e
 
 ## Release boundaries
 
-I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B); both are private at present. I have built and validated PyPI distribution files locally but **have not uploaded them to PyPI or TestPyPI**; see my [release checklist](RELEASE_PYPI.md). The GitHub repository does not bundle weights or data. Even after a future `pip install lakun` release, users will need to obtain a complete checkpoint separately. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); before a public weight release I still need to review upstream model/data terms and decide on a separate weight license.
+I keep code in [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun) and weights in [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B); both repositories are private at present. I distribute the code package through PyPI, without weights or data; see my [release checklist](RELEASE_PYPI.md). A `pip install lakun` installation still needs a complete checkpoint obtained separately. Transformers `AutoModel.from_pretrained()` cannot load this custom architecture directly. The source is [Apache-2.0](LICENSE); before a public weight release I still need to review upstream model/data terms and decide on a separate weight license.
 
 ## Limitations I am seeing
 

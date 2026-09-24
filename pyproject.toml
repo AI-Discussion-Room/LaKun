@@ -27,9 +27,6 @@ test = ["pytest>=8"]
 [project.scripts]
 lakun = "lakun.cli:main"
 
-[project.urls]
-Repository = "https://github.com/AI-Discussion-Room/LaKun"
-
 [tool.setuptools]
 packages = ["lakun", "lakun.vendor", "lakun.vendor.laya"]
 include-package-data = false

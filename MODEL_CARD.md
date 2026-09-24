@@ -8,11 +8,11 @@ base_model:
 - google/siglip-so400m-patch14-384
 ---
 
-# LaKun-0.7B：文本与单图的类型化决策
+# LaKun-0.7B：JEV 决策类型模型的多模态版本
 
-我做 LaKun，是想把一段文本状态或一张图片，变成几个**事先定义好答案空间**的问题：选择、分档评分、二元判别。它对每题的候选项打分，返回最高分的候选项及整组 softmax 分数；它不生成自由文本，也不是聊天模型。三类问题可以放在一次 `predict()` 中一起问。
+我从 JEV 得到灵感，也借鉴了 [Laya](https://github.com/mizorewww/laya-mlx) 的优化方式。最初我把它叫作 LaJ（谐音“垃圾”），后来为了致敬前辈，定名为 LaKun。LaKun 是我做的 JEV 决策类型模型的多模态版本：面对一段文本状态或一张图片，直接回答我指定的选择、档位评分和二元判断问题，输出每个候选项的 softmax 分数与最高分选项，不生成自由文本。一次调用可以同时提交三类问题，最多 20 题；目前每次最多处理一张图片。
 
-> **当前是私有预览。**这份权重已上传到 `hh108801/LaKun-0.7B`，但仓库尚未公开，只有获得访问权限的人能下载。我还没有发布 PyPI 包。源代码在私有仓库 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，采用 Apache-2.0；**权重许可尚未单独确定**，不应把源码许可证当成权重许可证。
+[English](README.en.md) · 简体中文 · [源码与数据集统计](https://github.com/AI-Discussion-Room/LaKun) · [Apache-2.0 源码许可](https://github.com/AI-Discussion-Room/LaKun/blob/main/LICENSE)
 
 ## 模型档案
 
@@ -32,23 +32,19 @@ base_model:
 
 ## 如何使用
 
-我还没发布 `pip install lakun`。在有权限的环境里，先拉取源码并安装，然后下载完整魔塔仓库到本地：
+先安装与本机驱动匹配的 PyTorch，再安装我的 PyPI 代码包。模型权重单独存放在本仓库；传入 `hh108801/LaKun-0.7B` 时，加载器会下载并缓存完整检查点：
 
 ```bash
-git clone https://github.com/AI-Discussion-Room/LaKun.git
-cd LaKun
-python -m pip install -e .
-python -m pip install modelscope-hub
-ms-hub login
-ms-hub download hh108801/LaKun-0.7B --local-dir LaKun-0.7B
+python -m pip install lakun
+lakun --checkpoint hh108801/LaKun-0.7B
 ```
 
-私有 GitHub 仓库需要自己的访问权限。`ms-hub login` 在终端输入 Token，**不要把 Token 粘贴进代码或提交到仓库**。在项目目录里运行下面的示例：
+如果仓库设置了访问限制，先使用 `ms-hub login` 登录。在 Python 中也可以直接使用仓库 ID；首次运行的下载耗时不计入下面的推理测速：
 
 ```python
 from lakun import LaKunPredictor
 
-model = LaKunPredictor.from_pretrained("LaKun-0.7B")
+model = LaKunPredictor.from_pretrained("hh108801/LaKun-0.7B")
 result = model.predict(
     [
         {"type": "choice", "question": "这是什么类型的请求？", "criteria": ["咨询", "投诉", "退款"]},
@@ -79,16 +75,14 @@ for answer in result["answers"]:
 
 ### 推理测速
 
-我在**本机 Windows 11、RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32**上对同一个完整检查点测速。每个场景预热 5 次、串行计时 30 次，CUDA 在每次计时前后同步；下表是整个 `predict()` 调用的墙钟时间，包含分词、图片读取与预处理、前向传播和输出整理，**不含加载权重、下载或网络请求**。图像是本地留出集的一张样本；不同机器、输入长度或并发下结果会变。
+我在**本机 Windows 11、RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32**上对同一个完整检查点测速。每个场景预热 5 次、串行计时 30 次，CUDA 在每次计时前后同步；下表是整个 `predict()` 调用的墙钟时间，包含分词、图片读取与预处理、前向传播和输出整理，**不含加载权重、下载或网络请求**。这是固定输入上的延迟测试，不是准确率评估；不同机器、输入长度或并发下结果会变。
 
-| 单次请求 | 题数 | 中位延迟 | p95 延迟 |
-|---|---:|---:|---:|
-| 文本 | 1 | **17.01 ms** | 19.23 ms |
-| 文本 | 3 | **18.18 ms** | 18.65 ms |
-| 单张图片 | 1 | **162.01 ms** | 168.69 ms |
-| 单张图片 | 3 | **168.71 ms** | 171.59 ms |
-
-可复测脚本与本次测量记录在[源码仓库的 `analysis/`](https://github.com/AI-Discussion-Room/LaKun/tree/main/analysis) 中（仓库当前为 Private）。这些是 RTX 3060 数字，**不是**先前训练使用的 4090 的速度，也不是吞吐量测试。
+| 场景 | 平均耗时 | p95 耗时 |
+|---|---:|---:|
+| 纯文本·单题 | 17.33 ms | 19.23 ms |
+| 纯文本·三题 | 18.19 ms | 18.65 ms |
+| 单图·单题 | 163.06 ms | 168.69 ms |
+| 单图·三题 | 168.88 ms | 171.59 ms |
 
 ## 我的数据集：只公开统计，不公开样本
 

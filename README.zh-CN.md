@@ -1,10 +1,8 @@
 # LaKun：JEV 决策类型模型的多模态版本
 
-[English](README.md) · 简体中文 · [数据集完整统计](analysis/DATASET_PROFILE.md)
+[English](README.md) · 简体中文 · [Apache-2.0 许可](LICENSE) · [数据集完整统计](analysis/DATASET_PROFILE.md)
 
-LaKun 是我做的 JEV 决策类型模型的多模态版本。面对一段状态或一张图片，它直接回答我预先定义的问题：从候选项中选择、按档位评分，或者回答 `false/true`。它输出每个候选项的 softmax 分数和最高分选项，不生成自由文本，也不是聊天模型。一次 `predict()` 可以同时提交这三类问题；目前一个请求最多 20 题、最多一张图片。
-
-> **发布方式：**我通过 [PyPI](https://pypi.org/project/lakun/) 分发代码包，完整权重单独放在[魔塔模型仓库 `hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)。权重能否下载及其使用条款，以模型仓库当前设置为准。只安装代码包不能完成推理；源码的 Apache-2.0 许可不自动涵盖权重。
+我从 JEV 得到灵感，也借鉴了 [Laya](https://github.com/mizorewww/laya-mlx) 的优化方式。最初我把它叫作 LaJ（谐音“垃圾”），后来为了致敬前辈，定名为 LaKun。LaKun 是我做的 JEV 决策类型模型的多模态版本：面对一段文本状态或一张图片，直接回答我指定的选择、档位评分和二元判断问题，输出每个候选项的 softmax 分数与最高分选项，不生成自由文本。一次调用可以同时提交三类问题，最多 20 题；目前每次最多处理一张图片。
 
 ## 一眼看懂
 
@@ -76,16 +74,14 @@ for answer in result["answers"]:
 
 ### 本地推理速度
 
-我用本项目完整检查点在 **Windows 11、NVIDIA GeForce RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32 推理** 下测量。每种场景先预热 5 次，再串行执行 30 次；每次计时前后同步 CUDA。计时覆盖 `predict()` 的分词、图片读取与预处理、前向传播和结果整理；**不含**模型加载、下载或网络传输。图片来自本地测试集中的一张样本，测速不是准确率评估。
+我用本项目完整检查点在 **Windows 11、NVIDIA GeForce RTX 3060 12GB、PyTorch 2.7.1+cu126、FP32 推理** 下测量。每种场景先预热 5 次，再串行执行 30 次；每次计时前后同步 CUDA。计时覆盖 `predict()` 的分词、图片读取与预处理、前向传播和结果整理；**不含**模型加载、下载或网络传输。这是固定输入上的延迟测试，不是准确率评估。
 
-| 场景 | 每次问题数 | 平均延迟 | p95 延迟 |
-|---|---:|---:|---:|
-| 纯文本 | 1 | 17.33 ms | 19.23 ms |
-| 纯文本 | 3 | 18.19 ms | 18.65 ms |
-| 单张图片 | 1 | 163.06 ms | 168.69 ms |
-| 单张图片 | 3 | 168.88 ms | 171.59 ms |
-
-我把[可复测脚本](analysis/benchmark_inference.py)和[本次测量记录](analysis/benchmark_rtx3060_2026-09-24.json)都放在 `analysis/`。复测时用 `--checkpoint` 指定自己的完整权重目录，用 `--image` 指定一张本地图片。这组结果仅代表上述机器和输入，不等于 AutoDL 的 4090 速度，也不是多请求并发吞吐。
+| 场景 | 平均耗时 | p95 耗时 |
+|---|---:|---:|
+| 纯文本·单题 | 17.33 ms | 19.23 ms |
+| 纯文本·三题 | 18.19 ms | 18.65 ms |
+| 单图·单题 | 163.06 ms | 168.69 ms |
+| 单图·三题 | 168.88 ms | 171.59 ms |
 
 ## 我构建的数据集
 
@@ -112,10 +108,6 @@ python train_lakun.py
 ```
 
 训练默认使用本机可见 GPU（多卡为 DDP），每 3,000 优化步验证，最多 3 轮，连续 3 次验证损失未达到改进阈值则早停。检查点包含两座编码器和自定义决策模块；推理时要保留整个 `best/` 目录，不能只拿 `.safetensors`。当前检查点没有优化器状态，不能无损接着上次中断的优化步训练。详见 [`START.md`](START.md)。
-
-## 发布边界
-
-我把代码放在 [`AI-Discussion-Room/LaKun`](https://github.com/AI-Discussion-Room/LaKun)，把权重放在 [`hh108801/LaKun-0.7B`](https://modelscope.cn/models/hh108801/LaKun-0.7B)。我通过 PyPI 分发不含权重与数据的代码包，详见[发布清单](RELEASE_PYPI.md)。即使 `pip install lakun` 成功，仍需另外取得完整权重。这个自定义架构也不能直接通过 Transformers `AutoModel.from_pretrained()` 加载。源码采用 [Apache-2.0](LICENSE)；权重的获取与使用以模型仓库当前条款为准，不能从源码许可推断。
 
 ## 我目前看到的局限
 

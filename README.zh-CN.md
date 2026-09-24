@@ -99,10 +99,10 @@ for answer in result["answers"]:
 
 ## 训练与复现
 
-训练入口是 `train_lakun.py`。需要 Python 3.10+、可用的 CUDA PyTorch、`requirements-train.txt`、原始底座权重 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/`，以及六份 `dataset/{image,text}_{train,val,test}.jsonl` 和图片。先做小样本流程检查，再开始全量训练：
+训练入口是 `train_lakun.py`。需要 Python 3.10+、可用的 CUDA PyTorch、`pyproject.toml` 中声明的依赖、原始底座权重 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/`，以及六份 `dataset/{image,text}_{train,val,test}.jsonl` 和图片。训练时我使用 `transformers==4.57.3`。先做小样本流程检查，再开始全量训练：
 
 ```bash
-python -m pip install -r requirements-train.txt
+python -m pip install -e .
 python train_lakun.py --train-groups 12 --val-groups 6 --test-groups 6 --epochs 1 --out runs/lakun_pilot
 python train_lakun.py
 ```

@@ -99,10 +99,10 @@ I have not uploaded the raw JSONL, images, or the 1,000 inspected test examples 
 
 ## Training and reproducibility
 
-`train_lakun.py` needs Python 3.10+, a CUDA-enabled PyTorch build, `requirements-train.txt`, the original base weights under `weights/mmbert-base/` and `weights/siglip-so400m-patch14-384/`, plus six `dataset/{image,text}_{train,val,test}.jsonl` files and their referenced images. I recommend a small pipeline run before full training:
+`train_lakun.py` needs Python 3.10+, a CUDA-enabled PyTorch build, the dependencies declared in `pyproject.toml`, the original base weights under `weights/mmbert-base/` and `weights/siglip-so400m-patch14-384/`, plus six `dataset/{image,text}_{train,val,test}.jsonl` files and their referenced images. I trained with `transformers==4.57.3`. I recommend a small pipeline run before full training:
 
 ```bash
-python -m pip install -r requirements-train.txt
+python -m pip install -e .
 python train_lakun.py --train-groups 12 --val-groups 6 --test-groups 6 --epochs 1 --out runs/lakun_pilot
 python train_lakun.py
 ```

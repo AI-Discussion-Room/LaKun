@@ -4,13 +4,13 @@ LaKun 使用原始 mmBERT-base 文本权重、原始 SigLIP SO400M 图像权重�
 
 ## 放到服务器并训练
 
-保留 `lakun/`、`train_lakun.py`、`predict_lakun.py`、`pyproject.toml`、`requirements-train.txt`、`tokenizer/`、`images/`、`dataset/` 中图文各三份 `*_train.jsonl`／`*_val.jsonl`／`*_test.jsonl`，以及 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/` 中的正式权重及配置。划分按图片／文本 group ID 完成，比例约 8:1:1，同组问题不跨集合。图片路径由数据行引用，必须保留所引用图片及相对目录结构。
+保留 `lakun/`、`train_lakun.py`、`predict_lakun.py`、`pyproject.toml`、`tokenizer/`、`images/`、`dataset/` 中图文各三份 `*_train.jsonl`／`*_val.jsonl`／`*_test.jsonl`，以及 `weights/mmbert-base/` 与 `weights/siglip-so400m-patch14-384/` 中的正式权重及配置。划分按图片／文本 group ID 完成，比例约 8:1:1，同组问题不跨集合。图片路径由数据行引用，必须保留所引用图片及相对目录结构。
 
 在项目根目录运行：
 
 ```bash
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.device_count()); assert torch.cuda.is_available()"
-python -m pip install -r requirements-train.txt
+python -m pip install -e .
 python train_lakun.py --train-groups 12 --val-groups 6 --test-groups 6 --epochs 1 --out runs/lakun_pilot
 python train_lakun.py
 ```

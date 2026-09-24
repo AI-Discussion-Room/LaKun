@@ -2,7 +2,7 @@
 
 English · [简体中文](README.zh-CN.md) · [Apache-2.0 license](LICENSE) · [Dataset profile and charts](analysis/DATASET_PROFILE.md)
 
-JEV inspired this project, and I also drew on optimization ideas from [Laya](https://github.com/mizorewww/laya-mlx). LaKun is my multimodal take on a JEV typed-decision model: given a text state or an image, it answers my specified choice, rating-bin, and binary questions. It returns a softmax score for every option and the highest-scoring option, rather than generating free-form text. One call can mix all three question types, with up to 20 questions and one image.
+JEV inspired this project, and I also drew on optimization ideas from [Laya](https://github.com/mizorewww/laya-mlx) (RLCD). LaKun is my multimodal take on a JEV typed-decision model: given a text state or an image, it answers my specified choice, rating-bin, and binary questions. It returns a softmax score for every option and the highest-scoring option, rather than generating free-form text. One call can mix all three question types, with up to 20 questions and one image.
 
 ## At a glance
 
@@ -13,7 +13,6 @@ JEV inspired this project, and I also drew on optimization ideas from [Laya](htt
 | Output | Per-question `criteria`, `probabilities`, and `predicted_index`; probability calibration is **not validated** |
 | Architecture | mmBERT-base + SigLIP SO400M + visual-token bridge + typed decision head |
 | Parameter count | **756,409,158 (~0.756B)** across 627 checkpoint tensors; `0.7B` is an approximate repository name |
-| Weight size | `lakun.safetensors`: **3,025,715,432 bytes (2.82 GiB)**; complete inference directory: about **2.85 GiB** |
 | Context | At most 512 tokens, reserving 64 visual tokens for images; overlength inputs are truncated, prioritizing question/options and the start of the state |
 
 I jointly fine-tuned the text and vision encoders. I did **not** load a Laya fine-tuned checkpoint; the decision head uses Laya-derived code with its notice preserved. LaKun's results are not Laya's results.

@@ -10,7 +10,7 @@ base_model:
 
 # LaKun-0.7B: a multimodal JEV-style typed-decision model
 
-JEV inspired this project, and I also drew on optimization ideas from [Laya](https://github.com/mizorewww/laya-mlx). LaKun is my multimodal take on a JEV typed-decision model: given a text state or an image, it answers my specified choice, rating-bin, and binary questions. It returns a softmax score for every option and the highest-scoring option, rather than generating free-form text. One call can mix all three question types, with up to 20 questions and one image.
+JEV inspired this project, and I also drew on optimization ideas from [Laya](https://github.com/mizorewww/laya-mlx) (RLCD). LaKun is my multimodal take on a JEV typed-decision model: given a text state or an image, it answers my specified choice, rating-bin, and binary questions. It returns a softmax score for every option and the highest-scoring option, rather than generating free-form text. One call can mix all three question types, with up to 20 questions and one image.
 
 English · [简体中文](README.md) · [Source and dataset profile](https://github.com/AI-Discussion-Room/LaKun) · [Apache-2.0 source license](https://github.com/AI-Discussion-Room/LaKun/blob/main/LICENSE)
 
@@ -24,7 +24,6 @@ English · [简体中文](README.md) · [Source and dataset profile](https://git
 | Encoders | [mmBERT-base](https://huggingface.co/jhu-clsp/mmBERT-base) and [SigLIP SO400M](https://huggingface.co/google/siglip-so400m-patch14-384) |
 | Architecture | 64 visual-query tokens and a typed decision head; I jointly fine-tuned both encoders |
 | Parameters | **756,409,158 (~0.756B)**; `0.7B` is an approximate repository name |
-| Weight size | `lakun.safetensors`: **3,025,715,432 bytes (2.82 GiB)**; complete inference directory: about **2.85 GiB** |
 | Context | At most 512 tokens, reserving 64 for image queries; overlength input is truncated, keeping the question/options and the start of the state first |
 | Selected optimizer step | **16,882**, selected by validation loss |
 

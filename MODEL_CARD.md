@@ -10,7 +10,7 @@ base_model:
 
 # LaKun-0.7B：JEV 决策类型模型的多模态版本
 
-我从 JEV 得到灵感，也借鉴了 [Laya](https://github.com/mizorewww/laya-mlx) 的优化方式。最初我把它叫作 LaJ（谐音“垃圾”），后来为了致敬前辈，定名为 LaKun。LaKun 是我做的 JEV 决策类型模型的多模态版本：面对一段文本状态或一张图片，直接回答我指定的选择、档位评分和二元判断问题，输出每个候选项的 softmax 分数与最高分选项，不生成自由文本。一次调用可以同时提交三类问题，最多 20 题；目前每次最多处理一张图片。
+我从 JEV 得到灵感，也借鉴了 [Laya](https://github.com/mizorewww/laya-mlx) 的优化方式（RLCD）。最初我把它叫作 LaJ（谐音“垃圾”），后来为了致敬前辈，定名为 LaKun。LaKun 是我做的 JEV 决策类型模型的多模态版本：面对一段文本状态或一张图片，直接回答我指定的选择、档位评分和二元判断问题，输出每个候选项的 softmax 分数与最高分选项，不生成自由文本。一次调用可以同时提交三类问题，最多 20 题；目前每次最多处理一张图片。
 
 [English](README.en.md) · 简体中文 · [源码与数据集统计](https://github.com/AI-Discussion-Room/LaKun) · [Apache-2.0 源码许可](https://github.com/AI-Discussion-Room/LaKun/blob/main/LICENSE)
 
@@ -24,7 +24,6 @@ base_model:
 | 文本/视觉主干 | [mmBERT-base](https://huggingface.co/jhu-clsp/mmBERT-base) / [SigLIP SO400M](https://huggingface.co/google/siglip-so400m-patch14-384) |
 | 融合 | 64 个视觉查询 token + 类型化决策头，文本与视觉主干联合微调 |
 | 参数量 | **756,409,158（约 0.756B）**；`0.7B` 是近似命名 |
-| 文件大小 | `lakun.safetensors` **3,025,715,432 字节（2.82 GiB）**；完整推理目录约 **2.85 GiB** |
 | 上下文 | 最多 512 token，图像预留 64 个视觉 token；超限自动截断，优先保留问题/候选项和状态开头 |
 | 选择的训练步 | 16,882（按验证损失选出） |
 
